@@ -17,6 +17,7 @@ const FileClaimModal: React.FC<FileClaimModalProps> = ({
   onSuccess 
 }) => {
   const [loading, setLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState("");
 
   // Minimum anti-spam deposit: 5% of coverage payout (coverage // 20)
@@ -31,6 +32,7 @@ const FileClaimModal: React.FC<FileClaimModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setStatusMessage("Connecting to MetaMask...");
     setError("");
 
     try {
@@ -45,13 +47,26 @@ const FileClaimModal: React.FC<FileClaimModalProps> = ({
       const from = accounts?.[0];
       if (!from) throw new Error("No connected account found in MetaMask.");
 
+      setStatusMessage("Sign transaction in MetaMask...");
       const client = getGenLayerClient(from);
-      await client.writeContract({
+      const txHash = await client.writeContract({
         address: contractAddress as `0x${string}`,
         functionName: 'file_outage_claim',
         args: [policyId],
         value: valWei,
       });
+
+      setStatusMessage("Awaiting validator consensus finality...");
+      try {
+        await client.waitForTransactionReceipt({
+          hash: txHash,
+          status: 'ACCEPTED' as any,
+          interval: 2000,
+          retries: 30,
+        });
+      } catch (receiptErr) {
+        console.warn("Receipt wait warning:", receiptErr);
+      }
 
       onSuccess();
       onClose();
@@ -60,6 +75,7 @@ const FileClaimModal: React.FC<FileClaimModalProps> = ({
       setError(err?.message || "Failed to file outage claim. Verify your wallet balance and active policy state.");
     } finally {
       setLoading(false);
+      setStatusMessage("");
     }
   };
 
@@ -149,7 +165,7 @@ const FileClaimModal: React.FC<FileClaimModalProps> = ({
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Waiting for GenLayer Consensus (~15-30s)...</span>
+                  <span>{statusMessage || "Waiting for GenLayer Consensus..."}</span>
                 </>
               ) : (
                 <>

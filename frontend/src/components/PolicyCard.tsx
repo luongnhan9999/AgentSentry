@@ -33,12 +33,23 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
       if (!from) throw new Error("No connected account found in MetaMask.");
 
       const client = getGenLayerClient(from);
-      await client.writeContract({
+      const txHash = await client.writeContract({
         address: contractAddress as `0x${string}`,
         functionName: action === 'adjudicate' ? 'adjudicate_incident' : 'reclaim_expired_coverage',
         args: [policy.policy_id],
         value: BigInt(0),
       });
+
+      try {
+        await client.waitForTransactionReceipt({
+          hash: txHash,
+          status: 'ACCEPTED' as any,
+          interval: 2000,
+          retries: 45,
+        });
+      } catch (receiptErr) {
+        console.warn("Receipt wait warning:", receiptErr);
+      }
 
       onRefresh();
     } catch (err: any) {

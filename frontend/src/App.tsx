@@ -200,9 +200,19 @@ function App() {
       };
 
       provider.on?.('accountsChanged', handleAccountsChanged);
+      const pollTimer = setInterval(() => {
+        fetchData();
+      }, 5000);
+
       return () => {
+        clearInterval(pollTimer);
         provider.removeListener?.('accountsChanged', handleAccountsChanged);
       };
+    } else {
+      const pollTimer = setInterval(() => {
+        fetchData();
+      }, 5000);
+      return () => clearInterval(pollTimer);
     }
   }, []);
 
