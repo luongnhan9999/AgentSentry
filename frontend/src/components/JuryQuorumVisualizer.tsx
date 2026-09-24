@@ -1,19 +1,21 @@
 import React from 'react';
-import { Scale, Cpu, CheckCircle2, AlertOctagon, ShieldAlert, Layers } from 'lucide-react';
+import { Scale, Cpu, CheckCircle2, AlertOctagon, ShieldAlert, Layers, Clock } from 'lucide-react';
 
 interface JuryQuorumVisualizerProps {
   pendingCount: number;
 }
 
-const JUROR_NODES = [
-  { id: "GL-NODE-LEADER", model: "Llama-3.3-70B-Instruct", role: "Consensus Leader", vote: "INCIDENT_VERIFIED", status: "VALIDATED" },
-  { id: "GL-NODE-02", model: "DeepSeek-V3", role: "Validator Juror", vote: "INCIDENT_VERIFIED", status: "VALIDATED" },
-  { id: "GL-NODE-03", model: "Mistral-Large-2", role: "Validator Juror", vote: "INCIDENT_VERIFIED", status: "VALIDATED" },
-  { id: "GL-NODE-04", model: "Qwen-2.5-72B", role: "Validator Juror", vote: "INCIDENT_VERIFIED", status: "VALIDATED" },
-  { id: "GL-NODE-05", model: "Phi-4", role: "Validator Juror", vote: "INCIDENT_VERIFIED", status: "VALIDATED" },
+const VALIDATOR_ROLES = [
+  { id: "VALIDATOR-LEADER", role: "Consensus Leader", desc: "Executes gl.nondet.web.render & initial inference" },
+  { id: "VALIDATOR-02", role: "Independent Juror", desc: "Runs parallel probe & semantic comparison" },
+  { id: "VALIDATOR-03", role: "Independent Juror", desc: "Runs parallel probe & semantic comparison" },
+  { id: "VALIDATOR-04", role: "Independent Juror", desc: "Runs parallel probe & semantic comparison" },
+  { id: "VALIDATOR-05", role: "Independent Juror", desc: "Runs parallel probe & semantic comparison" },
 ];
 
 const JuryQuorumVisualizer: React.FC<JuryQuorumVisualizerProps> = ({ pendingCount }) => {
+  const isTriageActive = pendingCount > 0;
+
   return (
     <div className="bg-[#090D16] border border-slate-800 rounded-2xl p-6 mb-8 text-white font-mono shadow-xl relative overflow-hidden">
       <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/5 rounded-full blur-3xl pointer-events-none"></div>
@@ -25,13 +27,17 @@ const JuryQuorumVisualizer: React.FC<JuryQuorumVisualizerProps> = ({ pendingCoun
           </div>
           <div>
             <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <span>Optimistic Democracy Chamber</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40">
-                5 AI Jurors
+              <span>Optimistic Democracy Adjudication Architecture</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                isTriageActive 
+                  ? 'bg-amber-400/20 text-amber-300 border-amber-400/40 animate-pulse'
+                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+              }`}>
+                {isTriageActive ? `${pendingCount} Claim(s) Awaiting Probe` : 'Standing By'}
               </span>
             </h3>
             <p className="text-xs text-slate-400 font-sans">
-              Decentralized multi-LLM jury conducting on-chain diagnostics without oracle trust assumptions
+              Decentralized GenLayer AI jury conducting on-chain diagnostics without oracle trust assumptions
             </p>
           </div>
         </div>
@@ -46,7 +52,7 @@ const JuryQuorumVisualizer: React.FC<JuryQuorumVisualizerProps> = ({ pendingCoun
 
       {/* 5 Juror Nodes Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
-        {JUROR_NODES.map((node, idx) => (
+        {VALIDATOR_ROLES.map((node, idx) => (
           <div 
             key={idx} 
             className={`p-3.5 rounded-xl border transition-all ${
@@ -61,36 +67,37 @@ const JuryQuorumVisualizer: React.FC<JuryQuorumVisualizerProps> = ({ pendingCoun
             </div>
 
             <div className="text-xs font-bold text-white truncate mb-1">
-              {node.model}
-            </div>
-            <div className="text-[10px] text-slate-400 mb-3">
               {node.role}
+            </div>
+            <div className="text-[10px] text-slate-400 mb-3 leading-tight">
+              {node.desc}
             </div>
 
             <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800">
-              <span className="text-slate-500">Vote:</span>
-              <span className="text-red-400 font-bold text-[10px] bg-red-950/40 px-1.5 py-0.5 rounded border border-red-500/30">
-                OUTAGE
+              <span className="text-slate-500">Status:</span>
+              <span className={`font-bold text-[10px] px-1.5 py-0.5 rounded border ${
+                isTriageActive 
+                  ? 'bg-amber-950/40 text-amber-300 border-amber-500/40' 
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}>
+                {isTriageActive ? 'EVALUATING' : 'READY'}
               </span>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Quorum Progress Bar */}
+      {/* Consensus Verification Explanation */}
       <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800 text-xs">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-slate-400 flex items-center gap-1.5">
+        <div className="flex justify-between items-center mb-1">
+          <span className="text-slate-300 font-bold flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Semantic Agreement Consensus (5 / 5 Validators Confirmed)</span>
+            <span>Semantic Equivalence Rule (contracts/contract.py)</span>
           </span>
-          <span className="text-emerald-400 font-bold">100% UNANIMOUS</span>
+          <span className="text-sky-400 font-mono text-[11px]">gl.vm.run_nondet()</span>
         </div>
-        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-          <div className="bg-gradient-to-r from-emerald-500 to-teal-400 h-2 rounded-full w-full"></div>
-        </div>
-        <p className="text-[11px] text-slate-500 mt-2 font-sans">
-          Validators reach consensus by checking <code className="text-slate-300">mine["verdict"] == leader["verdict"]</code> on GenLayer studionet.
+        <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+          When an incident claim is triggered via <code className="text-slate-200">adjudicate_incident()</code>, GenLayer validators independently probe the live endpoint on-chain and compare <code className="text-slate-200">mine["verdict"] == leader["verdict"]</code>. If verdicts match, consensus finalizes and funds settle on studionet.
         </p>
       </div>
     </div>

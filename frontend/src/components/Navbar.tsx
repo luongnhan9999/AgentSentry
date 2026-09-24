@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, Wallet, Shield, HelpCircle, ExternalLink, Sparkles, CheckCircle2, Copy } from 'lucide-react';
+import { Activity, Wallet, Shield, HelpCircle, ExternalLink, CheckCircle2, Copy, LogOut } from 'lucide-react';
 import { formatGen } from '../utils/helpers';
 import { contractAddress } from '../config/genlayer';
 
@@ -7,16 +7,16 @@ interface NavbarProps {
   address: string | null;
   balance: string | null;
   onConnect: () => void;
-  showDemoData: boolean;
-  onToggleDemoData: () => void;
+  onDisconnect: () => void;
+  isConnecting?: boolean;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ 
   address, 
   balance, 
   onConnect, 
-  showDemoData, 
-  onToggleDemoData 
+  onDisconnect,
+  isConnecting = false
 }) => {
   const [showFaucetHelp, setShowFaucetHelp] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -57,23 +57,8 @@ const Navbar: React.FC<NavbarProps> = ({
           
           {/* Controls & Wallet */}
           <div className="flex items-center gap-3">
-            {/* Showcase Toggle */}
-            <button
-              onClick={onToggleDemoData}
-              title="Toggle realistic simulated telemetry policies when no on-chain policies exist yet"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border ${
-                showDemoData 
-                  ? 'bg-amber-50 text-amber-900 border-amber-300 ring-1 ring-amber-400/30' 
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <Sparkles className={`w-3.5 h-3.5 ${showDemoData ? 'text-amber-600' : 'text-slate-400'}`} />
-              <span className="hidden sm:inline">Showcase Data:</span>
-              <span>{showDemoData ? 'ON' : 'OFF'}</span>
-            </button>
-
             {/* Network Badge */}
-            <div className="hidden md:flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono">
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="text-slate-700 font-bold">studionet</span>
               <span className="text-slate-400">#61999</span>
@@ -93,9 +78,20 @@ const Navbar: React.FC<NavbarProps> = ({
             {!address ? (
               <button 
                 onClick={onConnect} 
-                className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all shadow-sm hover:scale-[1.02]"
+                disabled={isConnecting}
+                className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all shadow-sm hover:scale-[1.02] disabled:opacity-50"
               >
-                <Wallet className="w-4 h-4" /> Connect MetaMask
+                {isConnecting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Connecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Wallet className="w-4 h-4" />
+                    <span>Connect MetaMask</span>
+                  </>
+                )}
               </button>
             ) : (
               <div className="flex items-center gap-2">
@@ -105,6 +101,8 @@ const Navbar: React.FC<NavbarProps> = ({
                     <span className="text-xs font-mono font-bold text-slate-800">{formatGen(balance)}</span>
                   </div>
                 )}
+                
+                {/* Copy Address Button */}
                 <button 
                   onClick={copyAddress}
                   className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-2 rounded-xl font-mono text-xs border border-slate-200 transition-colors"
@@ -113,6 +111,16 @@ const Navbar: React.FC<NavbarProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                   <span>{address.slice(0, 6)}...{address.slice(-4)}</span>
                   {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                </button>
+
+                {/* Disconnect Button */}
+                <button
+                  onClick={onDisconnect}
+                  className="flex items-center gap-1 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl font-mono text-xs font-bold transition-colors"
+                  title="Disconnect wallet"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Disconnect</span>
                 </button>
               </div>
             )}

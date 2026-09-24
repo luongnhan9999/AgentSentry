@@ -14,18 +14,30 @@ import JuryQuorumVisualizer from './components/JuryQuorumVisualizer';
 import Footer from './components/Footer';
 import { getGenLayerClient, contractAddress } from './config/genlayer';
 import { parseContractResponse } from './utils/helpers';
-import { DEMO_POLICIES, DEMO_STATS, PolicyRecord } from './utils/demoData';
-import { Plus, Search, Filter, RefreshCw, Sparkles, Scale, ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, Search, Filter, RefreshCw, Scale, ShieldAlert, CheckCircle2, AlertCircle, Shield, ArrowRight } from 'lucide-react';
+
+const getEthereumProvider = () => {
+  if (typeof window === 'undefined') return null;
+  const anyWindow = window as any;
+  if (anyWindow.ethereum?.providers?.length) {
+    const metaMask = anyWindow.ethereum.providers.find((p: any) => p.isMetaMask);
+    if (metaMask) return metaMask;
+  }
+  return anyWindow.ethereum || null;
+};
 
 function App() {
   const [address, setAddress] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
-  const [onchainStats, setOnchainStats] = useState<any>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  
+  const [onchainStats, setOnchainStats] = useState<any>({
+    total_policies: 0,
+    total_coverage_locked: "0",
+    total_claims_settled: 0,
+  });
   const [onchainPolicies, setOnchainPolicies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Showcase mode: enabled by default when 0 policies onchain so judges can test all UI states
-  const [showDemoData, setShowDemoData] = useState<boolean>(true);
 
   // Role Tab navigation: 'all' | 'consumer' | 'underwriter' | 'jury'
   const [activeTab, setActiveTab] = useState<string>('all');
@@ -41,19 +53,57 @@ function App() {
   const [inspectPolicy, setInspectPolicy] = useState<any>(null);
   const [showSandbox, setShowSandbox] = useState(false);
 
-  // Connect MetaMask
-  const connectWallet = async () => {
-    if (window.ethereum) {
+  // Read Balance
+  const fetchBalance = async (acc: string) => {
+    const provider = getEthereumProvider();
+    if (provider) {
       try {
-        const chainIdHex = '0xF1EF'; // 61999 decimal
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: chainIdHex }],
-          });
-        } catch (switchError: any) {
-          if (switchError.code === 4902 || switchError.code === -32603) {
-            await window.ethereum.request({
+        const bal = await provider.request({
+          method: 'eth_getBalance',
+          params: [acc, 'latest']
+        });
+        setBalance(BigInt(bal).toString());
+      } catch (e) {
+        console.error("Failed to read balance", e);
+      }
+    }
+  };
+
+  // Connect MetaMask Wallet
+  const connectWallet = async () => {
+    setIsConnecting(true);
+    const provider = getEthereumProvider();
+    
+    if (!provider) {
+      alert("MetaMask not found! Please install the MetaMask browser extension to connect.");
+      setIsConnecting(false);
+      return;
+    }
+
+    try {
+      // Step 1: Request account authorization FIRST
+      const accounts = await provider.request({ method: 'eth_requestAccounts' });
+      if (accounts && accounts.length > 0) {
+        const acc = accounts[0];
+        setAddress(acc);
+        fetchBalance(acc);
+      }
+
+      // Step 2: Switch / Add studionet chain smoothly
+      const chainIdHex = '0xF1EF'; // 61999 in hex
+      try {
+        await provider.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: chainIdHex }],
+        });
+      } catch (switchError: any) {
+        if (
+          switchError?.code === 4902 || 
+          switchError?.code === -32603 ||
+          switchError?.data?.originalError?.code === 4902
+        ) {
+          try {
+            await provider.request({
               method: 'wallet_addEthereumChain',
               params: [
                 {
@@ -65,50 +115,47 @@ function App() {
                 },
               ],
             });
+          } catch (addErr) {
+            console.warn("Could not add Genlayer Studio Network", addErr);
           }
         }
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        if (accounts.length > 0) {
-          setAddress(accounts[0]);
-          fetchBalance(accounts[0]);
-        }
-      } catch (err) {
-        console.error("Connection failed", err);
       }
-    } else {
-      alert("MetaMask extension not found. Please install MetaMask to interact on-chain.");
+    } catch (err: any) {
+      console.error("Wallet connection error:", err);
+      if (err?.code === 4001) {
+        alert("Wallet connection request was rejected in MetaMask.");
+      } else {
+        alert(err?.message || "Failed to connect to MetaMask.");
+      }
+    } finally {
+      setIsConnecting(false);
     }
   };
 
-  const fetchBalance = async (acc: string) => {
-    if (window.ethereum) {
-      try {
-        const bal = await window.ethereum.request({
-          method: 'eth_getBalance',
-          params: [acc, 'latest']
-        });
-        setBalance(BigInt(bal).toString());
-      } catch (e) {
-        console.error("Failed to read balance", e);
-      }
-    }
+  // Disconnect Wallet
+  const disconnectWallet = () => {
+    setAddress(null);
+    setBalance(null);
   };
 
+  // Fetch 100% Real On-Chain Contract Data
   const fetchData = async () => {
     setLoading(true);
     try {
       const client = getGenLayerClient();
 
-      // Read protocol stats
+      // Read protocol stats from contract
       const statsRes = await client.readContract({
         address: contractAddress as `0x${string}`,
         functionName: 'get_stats',
         args: []
       });
       const parsedStats = parseContractResponse(statsRes);
-      setOnchainStats(parsedStats);
+      if (parsedStats && typeof parsedStats === 'object') {
+        setOnchainStats(parsedStats);
+      }
 
-      // Read paginated policies
+      // Read real paginated policies from contract
       const policiesRes = await client.readContract({
         address: contractAddress as `0x${string}`,
         functionName: 'get_policies_paginated',
@@ -117,6 +164,8 @@ function App() {
       const parsedPolicies = parseContractResponse(policiesRes);
       if (Array.isArray(parsedPolicies)) {
         setOnchainPolicies(parsedPolicies.reverse());
+      } else {
+        setOnchainPolicies([]);
       }
     } catch (err) {
       console.error("Failed to fetch on-chain data:", err);
@@ -125,52 +174,57 @@ function App() {
     }
   };
 
+  // Check already authorized account on initial load
   useEffect(() => {
     fetchData();
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts: string[]) => {
-        if (accounts.length > 0) {
+
+    const provider = getEthereumProvider();
+    if (provider) {
+      provider.request({ method: 'eth_accounts' })
+        .then((accounts: string[]) => {
+          if (accounts && accounts.length > 0) {
+            setAddress(accounts[0]);
+            fetchBalance(accounts[0]);
+          }
+        })
+        .catch(console.error);
+
+      const handleAccountsChanged = (accounts: string[]) => {
+        if (accounts && accounts.length > 0) {
           setAddress(accounts[0]);
           fetchBalance(accounts[0]);
         } else {
           setAddress(null);
           setBalance(null);
         }
-      });
+      };
+
+      provider.on?.('accountsChanged', handleAccountsChanged);
+      return () => {
+        provider.removeListener?.('accountsChanged', handleAccountsChanged);
+      };
     }
   }, []);
 
-  // Determine active dataset: onchain data is merged with demo data if showcase mode is active
+  // Filter 100% real onchain policies
   const displayedPolicies = useMemo(() => {
-    let list: any[] = [];
-    if (onchainPolicies && onchainPolicies.length > 0) {
-      list = [...onchainPolicies];
-    }
-    
-    if (showDemoData) {
-      // Add demo policies that don't collide with onchain IDs
-      const onchainIds = new Set(list.map((p) => p.policy_id));
-      const filteredDemos = DEMO_POLICIES.filter((p) => !onchainIds.has(p.policy_id));
-      list = [...list, ...filteredDemos];
-    }
+    let list: any[] = [...onchainPolicies];
 
     // Filter by Role Tab
     if (activeTab === 'consumer') {
       if (address) {
-        const myPolicies = list.filter((p) => 
+        list = list.filter((p) => 
           p.insured_consumer && p.insured_consumer.toLowerCase() === address.toLowerCase()
         );
-        if (myPolicies.length > 0) list = myPolicies;
       }
     } else if (activeTab === 'underwriter') {
       if (address) {
-        const myEscrows = list.filter((p) => 
+        list = list.filter((p) => 
           p.underwriter_pool && p.underwriter_pool.toLowerCase() === address.toLowerCase()
         );
-        if (myEscrows.length > 0) list = myEscrows;
       }
     } else if (activeTab === 'jury') {
-      // AI Jury Chamber: prioritize claims needing deliberation
+      // AI Jury Chamber: filter claims awaiting adjudication
       list = list.filter((p) => p.status === 1);
     }
 
@@ -191,44 +245,33 @@ function App() {
     }
 
     return list;
-  }, [onchainPolicies, showDemoData, activeTab, statusFilter, searchQuery, address]);
+  }, [onchainPolicies, activeTab, statusFilter, searchQuery, address]);
 
-  // Aggregate Stats
-  const effectiveStats = useMemo(() => {
-    if (onchainPolicies.length > 0) {
-      return onchainStats;
-    }
-    return showDemoData ? DEMO_STATS : (onchainStats || { total_policies: 0, total_coverage_locked: "0", total_claims_settled: 0 });
-  }, [onchainPolicies, onchainStats, showDemoData]);
-
-  // Tab counts
+  // Tab counts based on real onchain data
   const tabCounts = useMemo(() => {
-    const all = (onchainPolicies.length > 0 ? onchainPolicies : (showDemoData ? DEMO_POLICIES : []));
-    const pending = all.filter((p) => p.status === 1).length;
+    const pending = onchainPolicies.filter((p) => p.status === 1).length;
     const consumerCount = address 
-      ? all.filter((p) => p.insured_consumer?.toLowerCase() === address.toLowerCase()).length 
-      : all.length;
+      ? onchainPolicies.filter((p) => p.insured_consumer?.toLowerCase() === address.toLowerCase()).length 
+      : 0;
     const underwriterCount = address 
-      ? all.filter((p) => p.underwriter_pool?.toLowerCase() === address.toLowerCase()).length 
-      : all.length;
+      ? onchainPolicies.filter((p) => p.underwriter_pool?.toLowerCase() === address.toLowerCase()).length 
+      : 0;
 
     return {
-      total: all.length,
+      total: onchainPolicies.length,
       consumer: consumerCount,
       underwriter: underwriterCount,
       pendingAdjudication: pending,
     };
-  }, [onchainPolicies, showDemoData, address]);
+  }, [onchainPolicies, address]);
 
   const activeCount = useMemo(() => {
-    const list = onchainPolicies.length > 0 ? onchainPolicies : (showDemoData ? DEMO_POLICIES : []);
-    return list.filter((p) => p.status === 0).length;
-  }, [onchainPolicies, showDemoData]);
+    return onchainPolicies.filter((p) => p.status === 0).length;
+  }, [onchainPolicies]);
 
   const breachCount = useMemo(() => {
-    const list = onchainPolicies.length > 0 ? onchainPolicies : (showDemoData ? DEMO_POLICIES : []);
-    return list.filter((p) => p.status === 2 || p.verdict === 'INCIDENT_VERIFIED').length;
-  }, [onchainPolicies, showDemoData]);
+    return onchainPolicies.filter((p) => p.status === 2 || p.verdict === 'INCIDENT_VERIFIED').length;
+  }, [onchainPolicies]);
 
   const handleOpenSandbox = () => {
     setShowSandbox(true);
@@ -241,13 +284,13 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col font-sans telemetry-grid">
-      {/* Top Navbar */}
+      {/* Top Navbar with Disconnect */}
       <Navbar 
         address={address} 
         balance={balance} 
         onConnect={connectWallet} 
-        showDemoData={showDemoData}
-        onToggleDemoData={() => setShowDemoData(!showDemoData)}
+        onDisconnect={disconnectWallet}
+        isConnecting={isConnecting}
       />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
@@ -265,9 +308,9 @@ function App() {
           activeRole={activeTab}
         />
 
-        {/* Aggregated Stats Metrics Bar */}
+        {/* Aggregated On-Chain Stats */}
         <StatsBar 
-          stats={effectiveStats} 
+          stats={onchainStats} 
           activeCount={activeCount}
           breachCount={breachCount}
         />
@@ -336,49 +379,60 @@ function App() {
           </div>
         </div>
 
-        {/* Notice for Showcase Data */}
-        {showDemoData && onchainPolicies.length === 0 && (
-          <div className="mb-6 p-4 bg-sky-50/80 border border-sky-200 rounded-2xl flex items-center justify-between text-xs text-sky-950 font-mono shadow-sm">
-            <div className="flex items-center gap-2.5">
-              <Sparkles className="w-4 h-4 text-sky-600 flex-shrink-0" />
-              <span>
-                <strong>Showcase Telemetry Active:</strong> Displaying simulated API monitoring telemetry so you can test all 4 policy states (Active, Claim Pending, Indemnified Payout, Healthy Rejection).
-              </span>
-            </div>
-            <button 
-              onClick={() => setShowPurchase(true)}
-              className="hidden sm:inline-block px-3 py-1 bg-sky-600 text-white rounded-lg font-bold hover:bg-sky-500 transition-colors ml-4 flex-shrink-0"
-            >
-              + Create On-Chain Policy
-            </button>
-          </div>
-        )}
-
-        {/* Policies Grid */}
-        {loading && displayedPolicies.length === 0 ? (
+        {/* 100% Real On-Chain Policies Grid */}
+        {loading && onchainPolicies.length === 0 ? (
           <div className="flex flex-col justify-center items-center py-20 bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div className="w-10 h-10 border-3 border-sky-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-            <p className="text-xs font-mono text-slate-500">Querying GenLayer studionet smart contract...</p>
+            <div className="w-10 h-10 border-2 border-sky-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p className="text-xs font-mono text-slate-500">Querying GenLayer studionet contract at {contractAddress}...</p>
+          </div>
+        ) : onchainPolicies.length === 0 ? (
+          <div className="hud-card text-center py-16 rounded-2xl shadow-sm p-8 bg-white border border-slate-200">
+            <div className="w-14 h-14 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-sky-100">
+              <Shield className="w-7 h-7" />
+            </div>
+            <h3 className="font-mono font-bold text-lg text-slate-900 mb-1">
+              0 Policies Registered on studionet
+            </h3>
+            <p className="text-xs text-slate-500 max-w-lg mx-auto mb-6 font-sans leading-relaxed">
+              The AgentSentry contract (<code className="font-mono text-slate-800">{contractAddress}</code>) is fully deployed and active on GenLayer studionet. Connect your wallet and create your first SLA insurance policy to initiate continuous on-chain AI telemetry monitoring.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                onClick={() => {
+                  setPurchaseInitial({});
+                  setShowPurchase(true);
+                }}
+                className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-mono text-xs font-bold rounded-xl transition-all shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> Underwrite First Policy
+              </button>
+              <button
+                onClick={handleOpenSandbox}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-mono text-xs font-bold rounded-xl transition-colors border border-slate-200"
+              >
+                Test Probe in Sandbox
+              </button>
+            </div>
           </div>
         ) : displayedPolicies.length === 0 ? (
-          <div className="hud-card text-center py-16 rounded-2xl shadow-sm p-8">
-            <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Search className="w-6 h-6" />
-            </div>
-            <h3 className="font-mono font-bold text-base text-slate-800 mb-1">No Matching Policies Found</h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto mb-5 font-sans">
-              No policies match your active filter or search criteria. Reset filters or create a new policy to begin monitoring.
+          <div className="hud-card text-center py-12 rounded-2xl shadow-sm p-8">
+            <h3 className="font-mono font-bold text-sm text-slate-800 mb-1">No Policies Match Selected Role Filter</h3>
+            <p className="text-xs text-slate-500 mb-4 font-sans">
+              {activeTab === 'consumer' 
+                ? "You haven't purchased any SLA policies under your connected wallet yet."
+                : activeTab === 'underwriter'
+                ? "You haven't funded any underwriter escrow pools yet."
+                : "No active incident claims are currently awaiting AI jury deliberation."}
             </p>
             <button
               onClick={() => {
+                setActiveTab('all');
                 setStatusFilter('ALL');
                 setSearchQuery('');
-                setActiveTab('all');
-                setShowDemoData(true);
               }}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-xs font-bold rounded-lg transition-colors"
             >
-              Reset Filters & Show Demo Telemetry
+              View All Network Policies
             </button>
           </div>
         ) : (

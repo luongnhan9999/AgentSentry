@@ -8,40 +8,32 @@ interface ProbeSandboxModalProps {
 
 const PRESETS = [
   {
-    name: "Binance Public Market API",
-    tag: "Healthy (200 OK)",
+    name: "Binance Live Price API",
+    tag: "Real Live 200 OK",
     tagColor: "bg-emerald-100 text-emerald-800 border-emerald-300",
     url: "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
     schema: '{"symbol": "BTCUSDT", "price": "<number>"}',
-    simulatedLatency: 45,
-    simulatedStatus: 200,
   },
   {
-    name: "Simulated Cloud Service Outage",
-    tag: "Outage (503 Service Unavailable)",
-    tagColor: "bg-red-100 text-red-800 border-red-300",
-    url: "https://httpstat.us/503",
-    schema: '{"status": "ok", "service": "payment-gateway"}',
-    simulatedLatency: 1850,
-    simulatedStatus: 503,
-  },
-  {
-    name: "Silent Degradation / Schema Drift",
-    tag: "Silent Failure (Empty Payload)",
-    tagColor: "bg-amber-100 text-amber-800 border-amber-300",
-    url: "https://httpstat.us/200",
-    schema: '{"data": {"trades": [{"id": "<str>", "amount": "<number>"}]}}',
-    simulatedLatency: 120,
-    simulatedStatus: 200,
-  },
-  {
-    name: "CoinGecko Network Health",
-    tag: "Healthy (200 OK)",
+    name: "CoinGecko Live Ping API",
+    tag: "Real Live 200 OK",
     tagColor: "bg-emerald-100 text-emerald-800 border-emerald-300",
     url: "https://api.coingecko.com/api/v3/ping",
     schema: '{"gecko_says": "(V3) To the Moon!"}',
-    simulatedLatency: 80,
-    simulatedStatus: 200,
+  },
+  {
+    name: "Simulated 503 Outage Target",
+    tag: "Live 503 Service Unavailable",
+    tagColor: "bg-red-100 text-red-800 border-red-300",
+    url: "https://httpstat.us/503",
+    schema: '{"status": 200}',
+  },
+  {
+    name: "GitHub Zen API",
+    tag: "Real Live Plaintext",
+    tagColor: "bg-sky-100 text-sky-800 border-sky-300",
+    url: "https://api.github.com/zen",
+    schema: "Non-empty string",
   }
 ];
 
@@ -62,55 +54,82 @@ const ProbeSandboxModal: React.FC<ProbeSandboxModalProps> = ({ onClose, onDeploy
   const handleRunProbe = async () => {
     setProbing(true);
     setResult(null);
+    const startTime = performance.now();
 
-    // Simulate on-chain GenLayer probe execution
-    setTimeout(async () => {
-      let isOutage = false;
-      let status = 200;
-      let latency = Math.floor(Math.random() * 80) + 30;
-      let rawResponse = "";
+    try {
+      // 100% Real Live Fetch via browser
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-      if (url.includes("503") || url.includes("500") || url.includes("outage")) {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      const latency = Math.round(performance.now() - startTime);
+      const text = await response.text();
+
+      let parsedJson: any = null;
+      try {
+        parsedJson = JSON.parse(text);
+      } catch (e) {}
+
+      let isOutage = !response.ok;
+      let reason = "";
+
+      if (!response.ok) {
         isOutage = true;
-        status = 503;
-        latency = 1200;
-        rawResponse = "HTTP/1.1 503 Service Unavailable: Back-end server overloaded or network gateway failed.";
-      } else if (url.includes("httpstat.us/200") && schema.includes("trades")) {
-        // Silent degradation: 200 but schema drift
-        isOutage = true;
-        status = 200;
-        rawResponse = "200 OK (Empty Body)";
+        reason = `HTTP ERROR ${response.status} ${response.statusText}: Target API returned an outage error code. SLA breached.`;
+      } else if (schema.trim()) {
+        try {
+          const expected = JSON.parse(schema);
+          if (parsedJson && typeof expected === 'object' && !Array.isArray(expected)) {
+            const missingKeys = Object.keys(expected).filter(k => !(k in parsedJson));
+            if (missingKeys.length > 0) {
+              isOutage = true;
+              reason = `SILENT DEGRADATION: HTTP 200 received but response body is missing mandatory invariant keys: [${missingKeys.join(', ')}].`;
+            } else {
+              isOutage = false;
+              reason = `ENDPOINT HEALTHY: HTTP 200 OK (${latency}ms). All expected schema keys [${Object.keys(expected).join(', ')}] verified in live payload.`;
+            }
+          } else {
+            isOutage = false;
+            reason = `ENDPOINT HEALTHY: HTTP 200 OK (${latency}ms). Valid JSON payload received (${text.length} bytes).`;
+          }
+        } catch (schemaParseErr) {
+          if (!text || text.length === 0) {
+            isOutage = true;
+            reason = "EMPTY PAYLOAD: Target endpoint returned empty response body.";
+          } else {
+            isOutage = false;
+            reason = `ENDPOINT HEALTHY: HTTP ${response.status} OK (${latency}ms). Response received (${text.length} bytes).`;
+          }
+        }
       } else {
         isOutage = false;
-        status = 200;
-        rawResponse = JSON.stringify({ symbol: "BTCUSDT", price: "64520.10", server_time: Date.now() }, null, 2);
+        reason = `ENDPOINT HEALTHY: HTTP ${response.status} OK (${latency}ms). Endpoint responded successfully.`;
       }
 
-      const diagnostic = isOutage
-        ? {
-            verdict: "INCIDENT_VERIFIED",
-            confidence: 98,
-            outage_severity: 92,
-            reason: status === 503 
-              ? "DIAGNOSTIC CRITICAL: Live probe encountered HTTP 503 Service Unavailable. Upstream microservice unresponsive. Core SLA terms breached."
-              : "SILENT DEGRADATION DETECTED: Endpoint returned HTTP 200 but payload violated mandatory schema key invariant 'trades'. Corrupt/empty payload confirmed.",
-            latency,
-            status,
-            rawResponse
-          }
-        : {
-            verdict: "ENDPOINT_HEALTHY",
-            confidence: 95,
-            outage_severity: 5,
-            reason: "DIAGNOSTIC HEALTHY: Target endpoint returned valid 200 OK within 65ms. All JSON schema keys and invariants strictly satisfied. Endpoint SLA fully compliant.",
-            latency,
-            status,
-            rawResponse
-          };
-
-      setResult(diagnostic);
+      setResult({
+        verdict: isOutage ? "INCIDENT_VERIFIED" : "ENDPOINT_HEALTHY",
+        confidence: 96,
+        outage_severity: isOutage ? 90 : 5,
+        reason,
+        latency,
+        status: response.status,
+        rawResponse: text.slice(0, 600)
+      });
+    } catch (fetchErr: any) {
+      const latency = Math.round(performance.now() - startTime);
+      setResult({
+        verdict: "INCIDENT_VERIFIED",
+        confidence: 99,
+        outage_severity: 98,
+        reason: `CONNECTION FAILURE: ${fetchErr?.message || "Failed to reach endpoint (CORS or network timeout)."}. Endpoint is unreachable on public internet.`,
+        latency,
+        status: 0,
+        rawResponse: "Network / DNS / CORS resolution failure"
+      });
+    } finally {
       setProbing(false);
-    }, 1200);
+    }
   };
 
   return (
@@ -124,7 +143,7 @@ const ProbeSandboxModal: React.FC<ProbeSandboxModalProps> = ({ onClose, onDeploy
             </div>
             <div>
               <h2 className="text-lg font-mono font-bold text-slate-900">Live Endpoint Probe Sandbox</h2>
-              <p className="text-xs text-slate-500 font-sans">Simulate GenLayer AI Juror on-chain diagnostic probe prior to policy deployment</p>
+              <p className="text-xs text-slate-500 font-sans">Performs real live HTTP probe and evaluates schema compliance in real-time</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors">
@@ -202,16 +221,16 @@ const ProbeSandboxModal: React.FC<ProbeSandboxModalProps> = ({ onClose, onDeploy
               {probing ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Simulating On-Chain Consensus Probe...
+                  Executing Live HTTP Probe...
                 </>
               ) : (
                 <>
-                  <Play className="w-3.5 h-3.5 fill-current" /> Run Diagnostic Probe
+                  <Play className="w-3.5 h-3.5 fill-current" /> Run Live Diagnostic Probe
                 </>
               )}
             </button>
             <span className="text-xs text-slate-400 font-mono">
-              Calls <code className="text-slate-600">gl.nondet.web.render</code> + GenLayer Juror LLM
+              Tests live response latency and schema integrity
             </span>
           </div>
 
@@ -232,7 +251,7 @@ const ProbeSandboxModal: React.FC<ProbeSandboxModalProps> = ({ onClose, onDeploy
                     {result.verdict}
                   </span>
                   <span className="text-xs font-mono text-slate-600">
-                    HTTP {result.status} • Latency: {result.latency}ms
+                    HTTP {result.status} • Measured Latency: {result.latency}ms
                   </span>
                 </div>
 
@@ -250,9 +269,17 @@ const ProbeSandboxModal: React.FC<ProbeSandboxModalProps> = ({ onClose, onDeploy
               {/* Rationale */}
               <div className="bg-white/80 p-3.5 rounded-lg border border-slate-200/80 mb-3">
                 <p className="text-xs font-mono text-slate-700 leading-relaxed">
-                  <strong>AI Juror Rationale:</strong> {result.reason}
+                  <strong>Diagnostic Verdict:</strong> {result.reason}
                 </p>
               </div>
+
+              {/* Raw Response Preview */}
+              {result.rawResponse && (
+                <div className="bg-slate-900 text-emerald-400 p-3 rounded-lg font-mono text-[11px] overflow-x-auto mb-3 max-h-32">
+                  <div className="text-[10px] text-slate-500 uppercase mb-1">Live Response Body (First 600 bytes):</div>
+                  <pre className="whitespace-pre-wrap">{result.rawResponse}</pre>
+                </div>
+              )}
 
               {/* Metrics */}
               <div className="grid grid-cols-2 gap-3 text-xs font-mono">
