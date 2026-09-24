@@ -51,7 +51,6 @@ const FileClaimModal: React.FC<FileClaimModalProps> = ({
         functionName: 'file_outage_claim',
         args: [policyId],
         value: valWei,
-        account: { address: from as `0x${string}` } as any,
       });
 
       onSuccess();

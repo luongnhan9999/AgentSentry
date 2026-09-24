@@ -103,7 +103,6 @@ const PurchasePolicy: React.FC<PurchasePolicyProps> = ({
         functionName: 'purchase_policy',
         args: [consumerTarget, formData.url.trim(), formData.schema.trim(), parseInt(formData.duration, 10)],
         value: valWei,
-        account: { address: from as `0x${string}` } as any,
       });
 
       onSuccess();

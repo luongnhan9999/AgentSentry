@@ -37,7 +37,6 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
         address: contractAddress as `0x${string}`,
         functionName: action === 'adjudicate' ? 'adjudicate_incident' : 'reclaim_expired_coverage',
         args: [policy.policy_id],
-        account: { address: from as `0x${string}` } as any,
         value: BigInt(0),
       });
 

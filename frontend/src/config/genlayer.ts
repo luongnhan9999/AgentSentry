@@ -8,7 +8,7 @@ export const getGenLayerClient = (userAccount?: string) => {
     chain: studionet,
     endpoint: "https://studio.genlayer.com/api",
     provider: typeof window !== 'undefined' ? (window as any).ethereum : undefined,
-    account: userAccount ? ({ address: userAccount as `0x${string}` } as any) : undefined,
+    account: userAccount ? (userAccount as `0x${string}`) : undefined,
   });
 };
 
