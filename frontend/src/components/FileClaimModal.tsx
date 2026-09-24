@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getGenLayerClient, contractAddress } from '../config/genlayer';
+import { getGenLayerClient, contractAddress, ensureStudionetNetwork } from '../config/genlayer';
 import { ShieldAlert, AlertTriangle, X, CheckCircle2, Zap } from 'lucide-react';
 import { formatGen } from '../utils/helpers';
 
@@ -34,23 +34,24 @@ const FileClaimModal: React.FC<FileClaimModalProps> = ({
     setError("");
 
     try {
-      if (!window.ethereum) throw new Error("MetaMask not found. Please connect your wallet.");
-      const client = getGenLayerClient();
-      
+      if (!(window as any).ethereum) throw new Error("MetaMask not found. Please connect your wallet.");
       const valWei = BigInt(Math.floor(Number(depositGen) * 1e18));
       if (valWei < minDepositWei) {
         throw new Error(`Deposit must be at least ${minDepositGen.toFixed(4)} GEN (5% of coverage).`);
       }
 
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const from = accounts[0];
-      
+      await ensureStudionetNetwork();
+      const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+      const from = accounts?.[0];
+      if (!from) throw new Error("No connected account found in MetaMask.");
+
+      const client = getGenLayerClient(from);
       await client.writeContract({
         address: contractAddress as `0x${string}`,
         functionName: 'file_outage_claim',
         args: [policyId],
         value: valWei,
-        account: from,
+        account: { address: from as `0x${string}` } as any,
       });
 
       onSuccess();

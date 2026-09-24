@@ -1,7 +1,7 @@
 import React from 'react';
 import { getStatusLabel, getStatusColor, formatGen, truncateAddress } from '../utils/helpers';
 import { ExternalLink, Search, ShieldAlert, CheckCircle, Clock, Activity, AlertTriangle, ShieldCheck, Zap, ArrowUpRight, Wifi, Shield } from 'lucide-react';
-import { getGenLayerClient, contractAddress } from '../config/genlayer';
+import { getGenLayerClient, contractAddress, ensureStudionetNetwork } from '../config/genlayer';
 import UptimeHeatmap from './UptimeHeatmap';
 
 interface PolicyCardProps {
@@ -26,16 +26,18 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
   const handleAction = async (action: 'adjudicate' | 'reclaim') => {
     try {
       setLoadingAction(action);
-      if (!window.ethereum) throw new Error("MetaMask not found. Please install MetaMask.");
-      const client = getGenLayerClient();
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const from = accounts[0];
+      if (!(window as any).ethereum) throw new Error("MetaMask not found. Please install MetaMask.");
+      await ensureStudionetNetwork();
+      const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+      const from = accounts?.[0];
+      if (!from) throw new Error("No connected account found in MetaMask.");
 
+      const client = getGenLayerClient(from);
       await client.writeContract({
         address: contractAddress as `0x${string}`,
         functionName: action === 'adjudicate' ? 'adjudicate_incident' : 'reclaim_expired_coverage',
         args: [policy.policy_id],
-        account: from,
+        account: { address: from as `0x${string}` } as any,
         value: BigInt(0),
       });
 

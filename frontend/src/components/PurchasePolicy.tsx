@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getGenLayerClient, contractAddress } from '../config/genlayer';
+import { getGenLayerClient, contractAddress, ensureStudionetNetwork } from '../config/genlayer';
 import { Shield, Sparkles, X, AlertCircle, Clock, Zap, UserCheck } from 'lucide-react';
 
 interface PurchasePolicyProps {
@@ -79,8 +79,7 @@ const PurchasePolicy: React.FC<PurchasePolicyProps> = ({
     setError("");
 
     try {
-      if (!window.ethereum) throw new Error("MetaMask not found. Please install MetaMask to interact on-chain.");
-      const client = getGenLayerClient();
+      if (!(window as any).ethereum) throw new Error("MetaMask not found. Please install MetaMask to interact on-chain.");
       
       const valWei = BigInt(Math.floor(Number(formData.coverage) * 1e18));
       if (valWei <= BigInt(0)) {
@@ -92,16 +91,19 @@ const PurchasePolicy: React.FC<PurchasePolicyProps> = ({
         throw new Error("Invalid beneficiary Consumer address. Must be a valid 0x hex address.");
       }
       
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const from = accounts[0];
+      await ensureStudionetNetwork();
+      const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+      const from = accounts?.[0];
+      if (!from) throw new Error("No connected account found in MetaMask.");
       
+      const client = getGenLayerClient(from);
       // Updated contract signature: purchase_policy(consumer_addr, target_endpoint_url, expected_schema, duration_blocks)
       await client.writeContract({
         address: contractAddress as `0x${string}`,
         functionName: 'purchase_policy',
         args: [consumerTarget, formData.url.trim(), formData.schema.trim(), parseInt(formData.duration, 10)],
         value: valWei,
-        account: from,
+        account: { address: from as `0x${string}` } as any,
       });
 
       onSuccess();
