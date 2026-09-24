@@ -1,14 +1,102 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-slate: #F8FAFC;
+}
+
 body {
-  background-color: #F8FAFC;
-  color: #1e293b;
+  background-color: var(--bg-slate);
+  color: #0F172A;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  overflow-x: hidden;
 }
 
 .font-mono {
   font-family: 'JetBrains Mono', monospace;
+  font-feature-settings: "zero" 1, "tnum" 1;
+}
+
+/* Engineering Micro-Grid */
+.telemetry-grid {
+  background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+.telemetry-grid-dense {
+  background-image: radial-gradient(#94a3b8 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+/* Subtle Dark Matrix */
+.dark-telemetry-grid {
+  background-color: #090D16;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* HUD Hardware Corner Accents */
+.hud-card {
+  position: relative;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hud-card::before, .hud-card::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+}
+
+.hud-card::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid #0284C7;
+  border-left: 2px solid #0284C7;
+}
+
+.hud-card::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid #0284C7;
+  border-right: 2px solid #0284C7;
+}
+
+.hud-card:hover {
+  border-color: #CBD5E1;
+  box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+}
+
+/* Heartbeat pulse animation */
+@keyframes ecg-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-ecg {
+  animation: ecg-sweep 2.5s infinite linear;
+}
+
+/* Custom scrollbar for telemetry feeds */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }

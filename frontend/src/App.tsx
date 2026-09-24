@@ -9,6 +9,8 @@ import FileClaimModal from './components/FileClaimModal';
 import DiagnosticInspectorModal from './components/DiagnosticInspectorModal';
 import ProbeSandboxModal from './components/ProbeSandboxModal';
 import ProtocolArchitecture from './components/ProtocolArchitecture';
+import TelemetryHeartbeat from './components/TelemetryHeartbeat';
+import JuryQuorumVisualizer from './components/JuryQuorumVisualizer';
 import Footer from './components/Footer';
 import { getGenLayerClient, contractAddress } from './config/genlayer';
 import { parseContractResponse } from './utils/helpers';
@@ -238,7 +240,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col font-sans telemetry-grid">
       {/* Top Navbar */}
       <Navbar 
         address={address} 
@@ -249,6 +251,9 @@ function App() {
       />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
+        {/* Live Hardware Telemetry Oscilloscope */}
+        <TelemetryHeartbeat activeCount={activeCount} />
+
         {/* Hero Section */}
         <HeroSection 
           onNewPolicy={() => {
@@ -267,6 +272,11 @@ function App() {
           breachCount={breachCount}
         />
 
+        {/* If in AI Jury Chamber, render JuryQuorumVisualizer */}
+        {activeTab === 'jury' && (
+          <JuryQuorumVisualizer pendingCount={tabCounts.pendingAdjudication} />
+        )}
+
         {/* Role Tabs */}
         <RoleTabs 
           activeTab={activeTab}
@@ -275,7 +285,7 @@ function App() {
         />
 
         {/* Action & Filter Bar */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-sm mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="hud-card rounded-2xl p-4 shadow-sm mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
           {/* Search Input */}
           <div className="relative w-full md:w-80">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -328,7 +338,7 @@ function App() {
 
         {/* Notice for Showcase Data */}
         {showDemoData && onchainPolicies.length === 0 && (
-          <div className="mb-6 p-4 bg-sky-50/70 border border-sky-200 rounded-2xl flex items-center justify-between text-xs text-sky-900 font-mono">
+          <div className="mb-6 p-4 bg-sky-50/80 border border-sky-200 rounded-2xl flex items-center justify-between text-xs text-sky-950 font-mono shadow-sm">
             <div className="flex items-center gap-2.5">
               <Sparkles className="w-4 h-4 text-sky-600 flex-shrink-0" />
               <span>
@@ -351,7 +361,7 @@ function App() {
             <p className="text-xs font-mono text-slate-500">Querying GenLayer studionet smart contract...</p>
           </div>
         ) : displayedPolicies.length === 0 ? (
-          <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl shadow-sm p-8">
+          <div className="hud-card text-center py-16 rounded-2xl shadow-sm p-8">
             <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
               <Search className="w-6 h-6" />
             </div>

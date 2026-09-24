@@ -1,7 +1,8 @@
 import React from 'react';
 import { getStatusLabel, getStatusColor, formatGen, truncateAddress } from '../utils/helpers';
-import { ExternalLink, Search, ShieldAlert, CheckCircle, Clock, Activity, AlertTriangle, ShieldCheck, Zap, ArrowUpRight } from 'lucide-react';
+import { ExternalLink, Search, ShieldAlert, CheckCircle, Clock, Activity, AlertTriangle, ShieldCheck, Zap, ArrowUpRight, Wifi, Shield } from 'lucide-react';
 import { getGenLayerClient, contractAddress } from '../config/genlayer';
+import UptimeHeatmap from './UptimeHeatmap';
 
 interface PolicyCardProps {
   policy: any;
@@ -47,33 +48,27 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
     }
   };
 
-  const isInsuredConsumer = userAddress && policy.insured_consumer && 
-    userAddress.toLowerCase() === policy.insured_consumer.toLowerCase();
-
-  const isUnderwriter = userAddress && policy.underwriter_pool && 
-    userAddress.toLowerCase() === policy.underwriter_pool.toLowerCase();
-
   const isVerifiedOutage = policy.verdict === 'INCIDENT_VERIFIED';
   const isHealthyVerdict = policy.verdict === 'ENDPOINT_HEALTHY';
 
   return (
-    <div className={`bg-white border rounded-2xl shadow-sm hover:shadow-md transition-all p-5 flex flex-col justify-between ${
+    <div className={`hud-card rounded-2xl p-5 flex flex-col justify-between shadow-sm transition-all ${
       policy.status === 1 
-        ? 'border-amber-300 ring-2 ring-amber-400/20' 
+        ? 'border-amber-400 bg-amber-50/10' 
         : policy.status === 2 
-        ? 'border-red-200' 
-        : 'border-slate-200/90'
+        ? 'border-red-300 bg-red-50/10' 
+        : 'border-slate-200'
     }`}>
       <div>
-        {/* Top Bar */}
-        <div className="flex justify-between items-start gap-2 mb-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono font-extrabold text-base text-sky-700 tracking-tight">
-                {policy.policy_id}
+        {/* Top Header with Hardware Tag */}
+        <div className="flex justify-between items-start gap-2 mb-2 pb-2 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-extrabold text-sm text-sky-700 tracking-tight">
+                [{policy.policy_id}]
               </span>
               {policy.status === 1 && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-900 animate-pulse">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                   JURY TRIBUNAL ACTIVE
                 </span>
@@ -84,7 +79,7 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
               href={policy.target_endpoint_url} 
               target="_blank" 
               rel="noreferrer" 
-              className="text-xs font-mono text-slate-500 hover:text-sky-600 flex items-center gap-1 truncate"
+              className="text-xs font-mono text-slate-500 hover:text-sky-600 flex items-center gap-1 mt-1 truncate max-w-[220px]"
               title={policy.target_endpoint_url}
             >
               <span className="truncate">{policy.target_endpoint_url}</span>
@@ -92,29 +87,32 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
             </a>
           </div>
 
-          <span className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded-full flex-shrink-0 ${getStatusColor(policy.status)}`}>
+          <span className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-md flex-shrink-0 ${getStatusColor(policy.status)}`}>
             {getStatusLabel(policy.status)}
           </span>
         </div>
 
+        {/* 28-Day SLA Uptime Heatmap */}
+        <UptimeHeatmap uptimePct={policy.uptime_pct || 99.98} status={policy.status} />
+
         {/* Telemetry Gauge / Metrics */}
-        <div className="grid grid-cols-2 gap-2.5 my-3 p-3 bg-slate-50/80 rounded-xl border border-slate-100 text-xs font-mono">
+        <div className="grid grid-cols-2 gap-2 my-3 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs font-mono">
           <div>
-            <span className="text-[10px] text-slate-400 uppercase">Coverage Payout</span>
+            <span className="text-[10px] text-slate-400 uppercase block">Coverage Pool</span>
             <p className="font-bold text-slate-900 text-sm">{formatGen(policy.coverage_payout)}</p>
           </div>
           <div>
-            <span className="text-[10px] text-slate-400 uppercase">Anti-Spam Deposit</span>
+            <span className="text-[10px] text-slate-400 uppercase block">Anti-Spam Deposit</span>
             <p className="font-bold text-slate-700 text-sm">
               {policy.claim_deposit && policy.claim_deposit !== "0" ? formatGen(policy.claim_deposit) : "0 GEN"}
             </p>
           </div>
           <div>
-            <span className="text-[10px] text-slate-400 uppercase">Consumer</span>
+            <span className="text-[10px] text-slate-400 uppercase block">Consumer</span>
             <p className="font-medium text-slate-600 truncate">{truncateAddress(policy.insured_consumer)}</p>
           </div>
           <div>
-            <span className="text-[10px] text-slate-400 uppercase">Verdict</span>
+            <span className="text-[10px] text-slate-400 uppercase block">Verdict</span>
             <p className={`font-bold ${isVerifiedOutage ? 'text-red-600' : isHealthyVerdict ? 'text-emerald-600' : 'text-slate-500'}`}>
               {policy.verdict || 'PENDING'}
             </p>
@@ -123,25 +121,25 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
 
         {/* Confidence & Severity Meters */}
         {(policy.confidence > 0 || policy.outage_severity > 0) && (
-          <div className="mb-3 space-y-2 text-xs font-mono">
+          <div className="mb-3 space-y-1.5 text-xs font-mono">
             <div>
-              <div className="flex justify-between text-[11px] text-slate-500 mb-0.5">
+              <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
                 <span>Validator Confidence</span>
                 <span className="font-bold text-sky-600">{policy.confidence}%</span>
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5">
+              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                 <div className="bg-sky-500 h-1.5 rounded-full" style={{ width: `${policy.confidence}%` }}></div>
               </div>
             </div>
 
             <div>
-              <div className="flex justify-between text-[11px] text-slate-500 mb-0.5">
-                <span>Incident Severity</span>
+              <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                <span>Incident Severity Score</span>
                 <span className={`font-bold ${policy.outage_severity >= 70 ? 'text-red-600' : 'text-emerald-600'}`}>
                   {policy.outage_severity}/100
                 </span>
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5">
+              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                 <div 
                   className={`h-1.5 rounded-full ${policy.outage_severity >= 70 ? 'bg-red-500' : policy.outage_severity >= 30 ? 'bg-amber-500' : 'bg-emerald-500'}`} 
                   style={{ width: `${policy.outage_severity}%` }}
@@ -153,27 +151,27 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
 
         {/* AI Diagnostic preview */}
         {policy.reason && policy.reason !== "Policy active. Continuous SLA protection in effect." && (
-          <div className="mb-3 bg-slate-50 border border-slate-200/80 rounded-xl p-2.5">
-            <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 font-bold uppercase mb-1">
-              <Activity className="w-3 h-3 text-sky-500" />
-              <span>Diagnostic Rationale:</span>
+          <div className="mb-3 bg-slate-900 text-slate-200 rounded-xl p-2.5 border border-slate-800 font-mono">
+            <div className="flex items-center gap-1 text-[10px] text-sky-400 font-bold uppercase mb-1">
+              <Activity className="w-3 h-3 text-sky-400" />
+              <span>AI Diagnostic Forensic Log:</span>
             </div>
-            <p className="text-[11px] font-mono text-slate-700 line-clamp-2 leading-relaxed">
+            <p className="text-[11px] text-slate-300 line-clamp-2 leading-relaxed">
               {policy.reason}
             </p>
           </div>
         )}
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons Scoped to Role */}
       <div className="pt-3 border-t border-slate-100 space-y-2">
         <div className="flex flex-wrap gap-2">
           {/* Inspect Button */}
           <button 
             onClick={() => onInspect(policy)} 
-            className="flex-1 flex items-center justify-center py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-mono font-bold transition-colors"
+            className="flex-1 flex items-center justify-center py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-mono font-bold transition-colors"
           >
-            <Search className="w-3.5 h-3.5 mr-1" /> Dossier
+            <Search className="w-3.5 h-3.5 mr-1 text-slate-500" /> Dossier
           </button>
           
           {/* File Claim (Consumer Portal or Active Policy) */}
@@ -227,12 +225,12 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
         </div>
 
         <div className="flex justify-between items-center text-[10px] font-mono text-slate-400 pt-1">
-          <span>Expires: Block #{policy.expires_at_block}</span>
+          <span>Expires: #{policy.expires_at_block}</span>
           <a 
             href={`https://explorer-studio.genlayer.com/address/${contractAddress}`}
             target="_blank" 
             rel="noreferrer"
-            className="text-sky-500 hover:text-sky-700 flex items-center gap-0.5 hover:underline"
+            className="text-sky-600 hover:text-sky-800 flex items-center gap-0.5 hover:underline"
           >
             Explorer <ArrowUpRight className="w-3 h-3" />
           </a>
