@@ -140,6 +140,7 @@ function App() {
 
   // Fetch 100% Real On-Chain Contract Data
   const fetchData = async () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     setLoading(true);
     try {
       const client = getGenLayerClient();
@@ -167,8 +168,8 @@ function App() {
       } else {
         setOnchainPolicies([]);
       }
-    } catch (err) {
-      console.error("Failed to fetch on-chain data:", err);
+    } catch (err: any) {
+      console.warn("Notice: on-chain data fetch (auto-retrying):", err?.message || err);
     } finally {
       setLoading(false);
     }
@@ -201,8 +202,8 @@ function App() {
 
       provider.on?.('accountsChanged', handleAccountsChanged);
       const pollTimer = setInterval(() => {
-        fetchData();
-      }, 5000);
+        if (!document.hidden) fetchData();
+      }, 25000);
 
       return () => {
         clearInterval(pollTimer);
@@ -210,8 +211,8 @@ function App() {
       };
     } else {
       const pollTimer = setInterval(() => {
-        fetchData();
-      }, 5000);
+        if (!document.hidden) fetchData();
+      }, 25000);
       return () => clearInterval(pollTimer);
     }
   }, []);
