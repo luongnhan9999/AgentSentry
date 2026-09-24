@@ -2,11 +2,11 @@
 test_agentsentry.py — Pytest test suite for AgentSentry Intelligent Contract.
 
 Tests cover:
-  1. Policy purchase (happy path + edge cases)
-  2. Outage claim filing with anti-spam deposit
-  3. INCIDENT_VERIFIED → automatic payout to consumer
-  4. ENDPOINT_HEALTHY → claim rejected, deposit forfeited to pool
-  5. Expired policy coverage reclamation
+  1. Policy purchase (happy path + edge cases with decoupled Underwriter & Consumer)
+  2. Outage claim filing with anti-spam deposit & escrow tracking
+  3. INCIDENT_VERIFIED → automatic payout of coverage + deposit to consumer
+  4. ENDPOINT_HEALTHY → claim rejected, deposit absorbed into coverage pool
+  5. Expired policy coverage reclamation by underwriter
   6. Edge cases: zero value, double-claim, wrong caller, invalid URL
 
 Uses gltest fluent API: .connect(acct).method(args=[...]).transact(value=X) (R16)
@@ -24,11 +24,12 @@ from conftest import install_incident_verified_mocks, install_endpoint_healthy_m
 class TestPurchasePolicy:
 
     def test_purchase_policy_happy_path(self, setup):
-        """Consumer purchases a valid SLA insurance policy."""
+        """Underwriter funds SLA insurance policy for a Consumer."""
         contract, client, deployer, consumer = setup
 
-        result = contract.connect(consumer).purchase_policy(
+        result = contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v1/health",
                 "Must return JSON with keys: status, uptime, response_time_ms",
                 5000
@@ -53,8 +54,9 @@ class TestPurchasePolicy:
         contract, client, deployer, consumer = setup
 
         with pytest.raises(Exception, match="Coverage insurance escrow must be greater than 0"):
-            contract.connect(consumer).purchase_policy(
+            contract.connect(deployer).purchase_policy(
                 args=[
+                    consumer.address,
                     "https://api.example.com/v1/health",
                     "Must return JSON with status key",
                     5000
@@ -66,8 +68,9 @@ class TestPurchasePolicy:
         contract, client, deployer, consumer = setup
 
         with pytest.raises(Exception, match="Valid target endpoint HTTP/HTTPS URL is required"):
-            contract.connect(consumer).purchase_policy(
+            contract.connect(deployer).purchase_policy(
                 args=[
+                    consumer.address,
                     "ftp://invalid-protocol.com/data",
                     "Must return JSON with status key",
                     5000
@@ -79,8 +82,9 @@ class TestPurchasePolicy:
         contract, client, deployer, consumer = setup
 
         with pytest.raises(Exception, match="Expected schema/invariant requirements must be provided"):
-            contract.connect(consumer).purchase_policy(
+            contract.connect(deployer).purchase_policy(
                 args=[
+                    consumer.address,
                     "https://api.example.com/v1/health",
                     "ab",
                     5000
@@ -98,16 +102,17 @@ class TestFileOutageClaim:
         """Consumer files an outage claim with sufficient anti-spam deposit."""
         contract, client, deployer, consumer = setup
 
-        # Step 1: Purchase policy
-        contract.connect(consumer).purchase_policy(
+        # Step 1: Underwriter funds policy for Consumer
+        contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v1/health",
                 "Must return JSON with keys: status, uptime",
                 5000
             ]
         ).transact(value=10_000)
 
-        # Step 2: File claim with 5% deposit (500 wei minimum)
+        # Step 2: Consumer files claim with 5% deposit (500 wei minimum)
         contract.connect(consumer).file_outage_claim(
             args=["sentry-1"]
         ).transact(value=1_000)
@@ -117,12 +122,18 @@ class TestFileOutageClaim:
         policy = json.loads(policy_json)
         assert policy["status"] == 1  # CLAIM_FILED
 
+        # Verify deposit is added to total_coverage_locked in accounting
+        stats_json = contract.get_stats(args=[]).call()
+        stats = json.loads(stats_json)
+        assert int(stats["total_coverage_locked"]) == 11_000  # 10,000 + 1,000
+
     def test_file_claim_insufficient_deposit_rejected(self, setup):
         """Claim with deposit below 5% of coverage should be rejected."""
         contract, client, deployer, consumer = setup
 
-        contract.connect(consumer).purchase_policy(
+        contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v1/health",
                 "Must return JSON with keys: status, uptime",
                 5000
@@ -132,7 +143,7 @@ class TestFileOutageClaim:
         with pytest.raises(Exception, match="Must stake anti-spam deposit"):
             contract.connect(consumer).file_outage_claim(
                 args=["sentry-1"]
-            ).transact(value=100)  # Way below 5% of 10,000
+            ).transact(value=100)  # Below 5% of 10,000
 
     def test_file_claim_nonexistent_policy_rejected(self, setup):
         """Filing claim on a non-existent policy should fail."""
@@ -144,18 +155,19 @@ class TestFileOutageClaim:
             ).transact(value=1_000)
 
     def test_file_claim_wrong_caller_rejected(self, setup):
-        """Only the insured consumer can file a claim, not a third party."""
+        """Only the insured consumer can file a claim, not the underwriter or a third party."""
         contract, client, deployer, consumer = setup
 
-        contract.connect(consumer).purchase_policy(
+        contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v1/health",
                 "Must return JSON with keys: status, uptime",
                 5000
             ]
         ).transact(value=10_000)
 
-        # Deployer (not the consumer) tries to file claim
+        # Deployer (underwriter, not consumer) tries to file claim
         with pytest.raises(Exception, match="Only the insured consumer"):
             contract.connect(deployer).file_outage_claim(
                 args=["sentry-1"]
@@ -176,8 +188,9 @@ class TestAdjudicateIncidentVerified:
         contract, client, deployer, consumer = setup
 
         # Purchase policy
-        contract.connect(consumer).purchase_policy(
+        contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v1/health",
                 "Must return JSON with keys: status, uptime",
                 5000
@@ -205,10 +218,11 @@ class TestAdjudicateIncidentVerified:
         assert int(policy["confidence"]) > 0
         assert int(policy["outage_severity"]) > 0
 
-        # Verify stats updated
+        # Verify accounting: total_coverage_locked reduced by coverage + deposit
         stats_json = contract.get_stats(args=[]).call()
         stats = json.loads(stats_json)
         assert stats["total_claims_settled"] == 1
+        assert int(stats["total_coverage_locked"]) == 0
 
 
 # ──────────────────────────────────────────────────────────────
@@ -225,8 +239,9 @@ class TestAdjudicateEndpointHealthy:
         contract, client, deployer, consumer = setup
 
         # Purchase policy
-        contract.connect(consumer).purchase_policy(
+        contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v1/health",
                 "Must return JSON with keys: status, uptime",
                 5000
@@ -251,8 +266,13 @@ class TestAdjudicateEndpointHealthy:
         policy = json.loads(policy_json)
         assert policy["verdict"] == "ENDPOINT_HEALTHY"
         assert policy["status"] == 0  # Reset to ACTIVE (not CLAIM_REJECTED)
-        # Coverage should now include the forfeited deposit
+        # Coverage now includes the forfeited deposit
         assert int(policy["coverage_payout"]) == 11_000  # 10,000 + 1,000 deposit
+
+        # Accounting: total_coverage_locked still tracks 11,000 in escrow
+        stats_json = contract.get_stats(args=[]).call()
+        stats = json.loads(stats_json)
+        assert int(stats["total_coverage_locked"]) == 11_000
 
 
 # ──────────────────────────────────────────────────────────────
@@ -268,26 +288,28 @@ class TestReclaimExpiredCoverage:
         """
         contract, client, deployer, consumer = setup
 
-        # Purchase policy with very short duration (1 block)
-        contract.connect(consumer).purchase_policy(
+        # Underwriter purchases policy for consumer with short duration (1 block)
+        contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v1/health",
                 "Must return JSON with keys: status, uptime",
                 1  # Expires almost immediately
             ]
         ).transact(value=10_000)
 
-        # Purchase another policy to advance the block counter past expiry
-        contract.connect(consumer).purchase_policy(
+        # Advance block counter past expiry
+        contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v2/status",
                 "Must return JSON with key: alive",
                 5000
             ]
         ).transact(value=5_000)
 
-        # Now reclaim the first (expired) policy
-        contract.connect(consumer).reclaim_expired_coverage(
+        # Underwriter reclaims the first (expired) policy
+        contract.connect(deployer).reclaim_expired_coverage(
             args=["sentry-1"]
         ).transact()
 
@@ -319,8 +341,9 @@ class TestViewFunctions:
 
         # Create 3 policies
         for i in range(3):
-            contract.connect(consumer).purchase_policy(
+            contract.connect(deployer).purchase_policy(
                 args=[
+                    consumer.address,
                     f"https://api.example.com/v{i+1}/health",
                     "Must return valid JSON response",
                     5000
@@ -344,8 +367,9 @@ class TestViewFunctions:
         """Get policy ID by index in the DynArray."""
         contract, client, deployer, consumer = setup
 
-        contract.connect(consumer).purchase_policy(
+        contract.connect(deployer).purchase_policy(
             args=[
+                consumer.address,
                 "https://api.example.com/v1/health",
                 "Must return JSON with status key",
                 5000

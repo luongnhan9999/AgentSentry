@@ -19,7 +19,6 @@ class Policy:
     policy_id: str
     insured_consumer: Address
     underwriter_pool: Address
-    premium_paid: bigint
     coverage_payout: bigint
     claim_deposit: bigint         # Anti-spam stake paid by consumer when triggering a claim
     target_endpoint_url: str      # The live API or agent endpoint being monitored
@@ -27,7 +26,7 @@ class Policy:
     status: u8                    # 0: ACTIVE, 1: CLAIM_FILED, 2: INDEMNIFIED, 3: CLAIM_REJECTED, 4: EXPIRED
     verdict: str                  # "PENDING", "INCIDENT_VERIFIED", "ENDPOINT_HEALTHY"
     reason: str                   # Juror technical diagnostic assessment
-    confidence: u8                # 0 - 100: Validator consensus confidence
+    confidence: u8                 # 0 - 100: Validator consensus confidence
     outage_severity: u8           # 0 - 100: Degree of outage, degradation, or schema violation
     created_at_block: u256
     expires_at_block: u256
@@ -52,10 +51,9 @@ class Contract(gl.Contract):
         self.policy_counter = u64(0)
 
     @gl.public.write.payable
-    def purchase_policy(self, target_endpoint_url: str, expected_schema: str, duration_blocks: int) -> str:
+    def purchase_policy(self, consumer_addr: Address, target_endpoint_url: str, expected_schema: str, duration_blocks: int) -> str:
         """
-        Underwriter or Consumer funds the coverage escrow pool and registers SLA parameters.
-        The coverage pool covers potential downtime payouts.
+        Underwriter funds coverage escrow pool protecting a specific Consumer against API degradation.
         """
         coverage = bigint(gl.message.value)
         if coverage <= bigint(0):
@@ -78,9 +76,8 @@ class Contract(gl.Contract):
 
         new_policy = Policy(
             policy_id=policy_id,
-            insured_consumer=gl.message.sender_address,
+            insured_consumer=consumer_addr,
             underwriter_pool=gl.message.sender_address,
-            premium_paid=coverage // bigint(10),  # Implied reserve ratio
             coverage_payout=coverage,
             claim_deposit=bigint(0),
             target_endpoint_url=clean_url,
@@ -105,7 +102,7 @@ class Contract(gl.Contract):
     def file_outage_claim(self, policy_id: str) -> None:
         """
         Consumer triggers an outage investigation.
-        Must stake a small deposit to prevent frivolous probe attacks.
+        Must stake an anti-spam deposit to prevent frivolous probe spam.
         """
         if policy_id not in self.policies:
             raise gl.UserError(f"Policy {policy_id} does not exist.")
@@ -132,15 +129,15 @@ class Contract(gl.Contract):
         p.claim_started_block = u256(int(self.policy_counter))
         p.reason = "Downtime/degradation claim filed with staked deposit. AI jury conducting diagnostic probe."
 
+        # Lock deposit into accounting
+        self.total_coverage_locked = self.total_coverage_locked + staked
+
     @gl.public.write
     def adjudicate_incident(self, policy_id: str) -> None:
         """
         AI Jury fetches live endpoint response directly on-chain via gl.nondet.web.render,
         evaluates response integrity, latency notes, and schema compliance,
         and reaches consensus on VERDICT (INCIDENT_VERIFIED or ENDPOINT_HEALTHY).
-
-        Validator compares VERDICT only (semantic consensus) — ignoring differences
-        in the free-text reason field. This is the key pattern for scoring 4+ on Axis 2.
         """
         if policy_id not in self.policies:
             raise gl.UserError(f"Policy {policy_id} does not exist.")
@@ -149,7 +146,6 @@ class Contract(gl.Contract):
         if p.status != u8(1):
             raise gl.UserError(f"Policy {policy_id} is not awaiting incident adjudication.")
 
-        # Read storage BEFORE entering nondet block (closure captures these)
         endpoint_url = p.target_endpoint_url
         schema_rules = p.expected_schema
 
@@ -161,7 +157,6 @@ class Contract(gl.Contract):
             except Exception:
                 fetch_error = True
 
-            # If endpoint is completely unreachable or dead, incident is confirmed
             if fetch_error or not raw_probe or len(raw_probe.strip()) == 0:
                 return {
                     "verdict": "INCIDENT_VERIFIED",
@@ -248,11 +243,6 @@ Respond ONLY with valid JSON without markdown:
             }
 
         def validator_fn(leader_res) -> bool:
-            """
-            Semantic Consensus: validator runs the same diagnostic probe independently
-            and compares ONLY the verdict string. Differences in reason/confidence
-            wording are expected and tolerated — only the core decision matters.
-            """
             if not isinstance(leader_res, gl.vm.Return):
                 return False
             leader = leader_res.calldata
@@ -265,8 +255,7 @@ Respond ONLY with valid JSON without markdown:
                 return False
 
             mine = leader_fn()
-            # ✅ Compare VERDICT ONLY — the semantic meaning.
-            # This is the key pattern that distinguishes score 1 from score 4+.
+            # Semantic Consensus: Compare VERDICT ONLY!
             return mine["verdict"] == leader["verdict"]
 
         adjudication_res = gl.vm.run_nondet(leader_fn, validator_fn)
@@ -287,19 +276,16 @@ Respond ONLY with valid JSON without markdown:
 
         if verdict == "INCIDENT_VERIFIED":
             p.status = u8(2)  # INDEMNIFIED
-            self.total_coverage_locked = self.total_coverage_locked - coverage_val
+            total_indemnity = coverage_val + deposit_val
+            self.total_coverage_locked = self.total_coverage_locked - total_indemnity
             self.total_claims_settled = self.total_claims_settled + u32(1)
             # Pay insurance compensation to consumer + return their anti-spam deposit
-            total_indemnity = coverage_val + deposit_val
             gl.get_contract_at(p.insured_consumer).emit_transfer(value=u256(total_indemnity))
         else:
-            # Endpoint is healthy: Claim rejected. Consumer's claim deposit is forfeited to the pool
+            # Endpoint is healthy: Claim rejected. Consumer's deposit absorbed into coverage
             p.status = u8(0)  # Reset to ACTIVE
             p.verdict = "ENDPOINT_HEALTHY"
-            if deposit_val > bigint(0):
-                # Deposit absorbed into underwriter coverage reserve
-                p.coverage_payout = p.coverage_payout + deposit_val
-                self.total_coverage_locked = self.total_coverage_locked + deposit_val
+            p.coverage_payout = p.coverage_payout + deposit_val
 
     @gl.public.write
     def reclaim_expired_coverage(self, policy_id: str) -> None:
@@ -323,6 +309,7 @@ Respond ONLY with valid JSON without markdown:
             dep = p.claim_deposit
             p.claim_deposit = bigint(0)
             if dep > bigint(0):
+                self.total_coverage_locked = self.total_coverage_locked - dep
                 gl.get_contract_at(p.insured_consumer).emit_transfer(value=u256(dep))
         elif p.status == u8(0):
             if current_block < p.expires_at_block:
@@ -352,7 +339,6 @@ Respond ONLY with valid JSON without markdown:
             "policy_id": p.policy_id,
             "insured_consumer": _addr_str(p.insured_consumer),
             "underwriter_pool": _addr_str(p.underwriter_pool),
-            "premium_paid": str(p.premium_paid),
             "coverage_payout": str(p.coverage_payout),
             "claim_deposit": str(p.claim_deposit),
             "target_endpoint_url": p.target_endpoint_url,
@@ -379,7 +365,6 @@ Respond ONLY with valid JSON without markdown:
 
     @gl.public.view
     def get_policies_paginated(self, offset: int, limit: int) -> str:
-        """Safely paginates policies to avoid out-of-memory errors."""
         total = len(self.policy_ids)
         if offset < 0 or offset >= total or limit <= 0:
             return json.dumps([])
@@ -393,7 +378,6 @@ Respond ONLY with valid JSON without markdown:
                 "policy_id": p.policy_id,
                 "insured_consumer": _addr_str(p.insured_consumer),
                 "underwriter_pool": _addr_str(p.underwriter_pool),
-                "premium_paid": str(p.premium_paid),
                 "coverage_payout": str(p.coverage_payout),
                 "claim_deposit": str(p.claim_deposit),
                 "target_endpoint_url": p.target_endpoint_url,

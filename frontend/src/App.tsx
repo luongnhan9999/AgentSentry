@@ -465,6 +465,7 @@ function App() {
           onSuccess={fetchData}
           initialUrl={purchaseInitial.url}
           initialSchema={purchaseInitial.schema}
+          userAddress={address}
         />
       )}
 
