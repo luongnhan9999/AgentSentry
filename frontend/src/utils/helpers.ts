@@ -1,12 +1,14 @@
 export const truncateAddress = (address: string) => {
-  if (!address) return "";
+  if (!address) return "0x0000...0000";
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
 export const formatGen = (amountStr: string | number) => {
   const amount = Number(amountStr);
-  if (isNaN(amount)) return "0.0000 GEN";
-  return (amount / 1e18).toFixed(4) + " GEN";
+  if (isNaN(amount) || amount === 0) return "0.0000 GEN";
+  const gen = amount / 1e18;
+  if (gen < 0.0001) return "< 0.0001 GEN";
+  return gen.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + " GEN";
 };
 
 export const getStatusLabel = (status: number) => {
@@ -22,13 +24,13 @@ export const getStatusLabel = (status: number) => {
 
 export const getStatusColor = (status: number) => {
   const mapping: Record<number, string> = {
-    0: 'bg-emerald-500 text-white',
-    1: 'bg-yellow-500 text-white',
-    2: 'bg-crimson-500 text-white',
-    3: 'bg-gray-500 text-white',
-    4: 'bg-gray-400 text-white'
+    0: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    1: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold',
+    2: 'bg-red-100 text-red-800 border border-red-300 font-bold',
+    3: 'bg-slate-100 text-slate-700 border border-slate-200',
+    4: 'bg-slate-100 text-slate-500 border border-slate-200'
   };
-  return mapping[status] || 'bg-gray-300 text-black';
+  return mapping[status] || 'bg-slate-100 text-slate-700';
 };
 
 export const parseContractResponse = (response: any) => {
