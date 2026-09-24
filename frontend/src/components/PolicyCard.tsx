@@ -26,6 +26,7 @@ const PolicyCard: React.FC<PolicyCardProps> = ({ policy, onInspect, onFileClaim,
         functionName: action === 'adjudicate' ? 'adjudicate_incident' : 'reclaim_expired_coverage',
         args: [policy.policy_id],
         account: from,
+        value: BigInt(0),
       });
 
       onRefresh();
