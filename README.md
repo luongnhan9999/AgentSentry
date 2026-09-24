@@ -176,7 +176,7 @@ def validator_fn(leader_res) -> bool:
 - **Live Application:** [https://agentsentry-eta.vercel.app](https://agentsentry-eta.vercel.app)
 - **Contract Address (studionet):** `0x8C63E2ec5Df199024b82E4f289aEF645b93893Ee`
 - **Explorer:** [View on GenLayer Studio Explorer](https://explorer-studio.genlayer.com/address/0x8C63E2ec5Df199024b82E4f289aEF645b93893Ee)
-- **Chain ID:** `61999` (0xF1EF) - GenLayer studionet
+- **Chain ID:** `61999` (0xF22F) - GenLayer studionet
 - **RPC Endpoint:** `https://studio.genlayer.com/api`
 
 ---
