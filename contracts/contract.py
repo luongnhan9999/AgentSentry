@@ -74,9 +74,11 @@ class Contract(gl.Contract):
         current_block = u256(int(self.policy_counter))
         expires_at = current_block + duration
 
+        consumer = consumer_addr if isinstance(consumer_addr, Address) else Address(str(consumer_addr))
+
         new_policy = Policy(
             policy_id=policy_id,
-            insured_consumer=consumer_addr,
+            insured_consumer=consumer,
             underwriter_pool=gl.message.sender_address,
             coverage_payout=coverage,
             claim_deposit=bigint(0),
