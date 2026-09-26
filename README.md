@@ -2,7 +2,7 @@
 
 > **Hackathon Track:** Agentic Economy Infrastructure / Subjective Consensus / P2P Insurance  
 > **Network:** GenLayer studionet (Chain ID: `61999` / `0xF22F`)  
-> **Deployed Contract:** [`0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d`](https://explorer-studio.genlayer.com/address/0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d)  
+> **Deployed Contract:** [`0x5D8Eb68f944D291F4Ccf6C13f96c0871ceaD906a`](https://explorer-studio.genlayer.com/address/0x5D8Eb68f944D291F4Ccf6C13f96c0871ceaD906a)  
 > **Live App:** [https://agentsentry-eta.vercel.app](https://agentsentry-eta.vercel.app)  
 > **One-liner:** Autonomous API SLA & uptime insurance protocol for AI agents, adjudicated on-chain via GenLayer consensus.
 
@@ -116,8 +116,7 @@ tests/test_agentsentry.py::TestViewsAndPagination::test_pagination_and_counts PA
 - **Network:** GenLayer Studionet
 - **Chain ID:** `61999` (`0xF22F`)
 - **RPC Endpoint:** `https://studio.genlayer.com/api`
-- **Contract Address:** [`0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d`](https://explorer-studio.genlayer.com/address/0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d)
-- **Deployment Transaction:** `0xd7e9a7f23240d4b750540788dadf290feb4e664de6b3a09c47425a64481c47a4` (Status: ACCEPTED, 5/5 Validators Agreed)
+- **Contract Address:** [`0x5D8Eb68f944D291F4Ccf6C13f96c0871ceaD906a`](https://explorer-studio.genlayer.com/address/0x5D8Eb68f944D291F4Ccf6C13f96c0871ceaD906a)
 - **Live Tested Policies:**
   - `sentry-1`: Live ACTIVE policy funded with 0.05 GEN coverage for user testing (`0x52C5E913Fc54d00cbA5Df3312268bf66035661F8`).
   - Unit Tests: 12/12 passing tests including anti-front-running inconclusive coverage locks and 24h stalled claim recovery.
