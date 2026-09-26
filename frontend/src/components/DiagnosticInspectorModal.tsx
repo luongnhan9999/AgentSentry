@@ -20,11 +20,14 @@ const DiagnosticInspectorModal: React.FC<DiagnosticInspectorModalProps> = ({ pol
 
   const isVerifiedOutage = verdict === 'INCIDENT_VERIFIED';
   const isHealthy = verdict === 'ENDPOINT_HEALTHY';
+  const isInconclusive = verdict.startsWith('INCONCLUSIVE') || policy.status === 5;
 
   const verdictBadge = isVerifiedOutage
     ? 'bg-red-100 text-red-800 border-red-300'
     : isHealthy
     ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+    : isInconclusive
+    ? 'bg-purple-100 text-purple-800 border-purple-300'
     : 'bg-slate-100 text-slate-700 border-slate-300';
 
   return (

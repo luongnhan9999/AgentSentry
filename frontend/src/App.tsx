@@ -90,7 +90,7 @@ function App() {
       }
 
       // Step 2: Switch / Add studionet chain smoothly
-      const chainIdHex = '0xF1EF'; // 61999 in hex
+      const chainIdHex = '0xF22F'; // 61999 in hex
       try {
         await provider.request({
           method: 'wallet_switchEthereumChain',
@@ -108,10 +108,10 @@ function App() {
               params: [
                 {
                   chainId: chainIdHex,
-                  chainName: 'Genlayer Studio Network',
+                  chainName: 'GenLayer Studio Network',
                   rpcUrls: ['https://studio.genlayer.com/api'],
                   nativeCurrency: { name: 'GEN Token', symbol: 'GEN', decimals: 18 },
-                  blockExplorerUrls: ['https://genlayer-explorer.vercel.app'],
+                  blockExplorerUrls: ['https://explorer-studio.genlayer.com'],
                 },
               ],
             });

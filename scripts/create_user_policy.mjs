@@ -2,7 +2,7 @@ import { createClient, createAccount } from '../frontend/node_modules/genlayer-j
 import { studionet } from '../frontend/node_modules/genlayer-js/dist/chains/index.js';
 import { TransactionStatus } from '../frontend/node_modules/genlayer-js/dist/types/index.js';
 
-const CONTRACT_ADDRESS = '0x8C63E2ec5Df199024b82E4f289aEF645b93893Ee';
+const CONTRACT_ADDRESS = '0x3339bFB2b7E345F4aB4476Ab68BB542690b627d4';
 const RPC_ENDPOINT = 'https://studio.genlayer.com/api';
 
 // Funded underwriter account
@@ -30,7 +30,7 @@ async function main() {
   const targetUrl = 'https://httpbin.org/status/500';
   const expectedSchema = 'HTTP 200 OK required. Server must return healthy 2xx status code without 500 Internal Server Errors.';
   const coverageAmount = 50_000_000_000_000_000n; // 0.05 GEN coverage
-  const durationBlocks = 5000;
+  const durationSeconds = 604800; // 7 days in seconds
 
   console.log(`\nCoverage Escrow Funded: 0.05 GEN (${coverageAmount} wei)`);
   console.log(`Target Endpoint:        ${targetUrl}`);
@@ -44,7 +44,7 @@ async function main() {
       USER_CONSUMER_ADDRESS,
       targetUrl,
       expectedSchema,
-      durationBlocks,
+      durationSeconds,
     ],
     value: coverageAmount,
   });

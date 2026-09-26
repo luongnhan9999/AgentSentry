@@ -17,7 +17,8 @@ export const getStatusLabel = (status: number) => {
     1: 'CLAIM_FILED',
     2: 'INDEMNIFIED',
     3: 'CLAIM_REJECTED',
-    4: 'EXPIRED'
+    4: 'EXPIRED',
+    5: 'CLAIM_INCONCLUSIVE'
   };
   return mapping[status] || 'UNKNOWN';
 };
@@ -28,7 +29,8 @@ export const getStatusColor = (status: number) => {
     1: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold',
     2: 'bg-red-100 text-red-800 border border-red-300 font-bold',
     3: 'bg-slate-100 text-slate-700 border border-slate-200',
-    4: 'bg-slate-100 text-slate-500 border border-slate-200'
+    4: 'bg-slate-100 text-slate-500 border border-slate-200',
+    5: 'bg-purple-100 text-purple-800 border border-purple-300 font-bold'
   };
   return mapping[status] || 'bg-slate-100 text-slate-700';
 };

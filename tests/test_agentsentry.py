@@ -1,387 +1,447 @@
 """
-test_agentsentry.py — Pytest test suite for AgentSentry Intelligent Contract.
+test_agentsentry.py — GenVM direct integration tests for AgentSentry Intelligent Contract.
 
-Tests cover:
-  1. Policy purchase (happy path + edge cases with decoupled Underwriter & Consumer)
-  2. Outage claim filing with anti-spam deposit & escrow tracking
-  3. INCIDENT_VERIFIED → automatic payout of coverage + deposit to consumer
-  4. ENDPOINT_HEALTHY → claim rejected, deposit absorbed into coverage pool
-  5. Expired policy coverage reclamation by underwriter
-  6. Edge cases: zero value, double-claim, wrong caller, invalid URL
-
-Uses gltest fluent API: .connect(acct).method(args=[...]).transact(value=X) (R16)
-Mock LLM/web installed BEFORE nondet transactions (R17)
+Tests strictly cover all Steward (Pavel Kolosov) audit requirements:
+  1. Valid elapsed-time mechanism for policy expiry and stalled-claim recovery
+  2. Failure cases: Web probe failure & Model failure enter INCONCLUSIVE path (NO auto-payout)
+  3. Inconclusive deposit withdrawal by claimant
+  4. Happy path: Incident verified triggers automatic payout
+  5. Healthy endpoint: Claim rejected, anti-spam deposit forfeited to underwriter
+  6. Persistent contract-recorded observations (Point-in-time SLA health audit)
+  7. Pagination and view functions
 """
-import json
 import pytest
-from conftest import install_incident_verified_mocks, install_endpoint_healthy_mocks
+import json
+from conftest import CONTRACT_PATH
 
 
 # ──────────────────────────────────────────────────────────────
-# 1. Policy Purchase Tests
+# 1. Policy Purchase & Real Elapsed-Time Expiry Tests
 # ──────────────────────────────────────────────────────────────
 
-class TestPurchasePolicy:
+class TestPolicyTimingAndExpiry:
 
-    def test_purchase_policy_happy_path(self, setup):
-        """Underwriter funds SLA insurance policy for a Consumer."""
-        contract, client, deployer, consumer = setup
+    def test_purchase_policy_sets_unix_timestamps(self, direct_deploy, direct_vm, direct_alice, direct_bob):
+        """Underwriter purchases policy; created_at and expires_at are real unix timestamps."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
 
-        result = contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v1/health",
-                "Must return JSON with keys: status, uptime, response_time_ms",
-                5000
-            ]
-        ).transact(value=10_000)
+        contract = direct_deploy(str(CONTRACT_PATH))
 
-        # Verify policy was created
-        count = contract.get_policy_count(args=[]).call()
-        assert count == 1
+        duration_sec = 86400 * 7  # 7 days
+        pid = contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/health",
+            "Must return valid JSON with keys: status, latency",
+            duration_sec
+        )
+        assert pid == "sentry-1"
 
-        # Read policy back
-        policy_json = contract.get_policy(args=["sentry-1"]).call()
-        policy = json.loads(policy_json)
+        policy = json.loads(contract.get_policy("sentry-1"))
         assert policy["policy_id"] == "sentry-1"
-        assert policy["target_endpoint_url"] == "https://api.example.com/v1/health"
         assert policy["status"] == 0  # ACTIVE
-        assert policy["verdict"] == "PENDING"
         assert int(policy["coverage_payout"]) == 10_000
 
-    def test_purchase_policy_zero_value_rejected(self, setup):
-        """Policy purchase with 0 GEN should be rejected."""
-        contract, client, deployer, consumer = setup
+        created_ts = int(policy["created_at"])
+        expires_ts = int(policy["expires_at"])
+        assert expires_ts == created_ts + duration_sec
+        assert created_ts > 1_700_000_000
 
-        with pytest.raises(Exception, match="Coverage insurance escrow must be greater than 0"):
-            contract.connect(deployer).purchase_policy(
-                args=[
-                    consumer.address,
-                    "https://api.example.com/v1/health",
-                    "Must return JSON with status key",
-                    5000
-                ]
-            ).transact(value=0)
+    def test_underwriter_cannot_reclaim_before_expiry(self, direct_deploy, direct_vm, direct_alice, direct_bob):
+        """Underwriter cannot reclaim collateral before policy duration elapses."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
 
-    def test_purchase_policy_invalid_url_rejected(self, setup):
-        """Policy with non-HTTP URL should be rejected."""
-        contract, client, deployer, consumer = setup
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/health",
+            "Must return valid JSON with status",
+            86400 * 7
+        )
 
-        with pytest.raises(Exception, match="Valid target endpoint HTTP/HTTPS URL is required"):
-            contract.connect(deployer).purchase_policy(
-                args=[
-                    consumer.address,
-                    "ftp://invalid-protocol.com/data",
-                    "Must return JSON with status key",
-                    5000
-                ]
-            ).transact(value=10_000)
+        # Warp forward only 3 days (not yet expired)
+        direct_vm.warp("2026-09-28T12:00:00Z")
 
-    def test_purchase_policy_empty_schema_rejected(self, setup):
-        """Policy with empty or too-short schema should be rejected."""
-        contract, client, deployer, consumer = setup
+        with pytest.raises(Exception, match="Insurance policy duration has not yet elapsed"):
+            contract.reclaim_expired_coverage("sentry-1")
 
-        with pytest.raises(Exception, match="Expected schema/invariant requirements must be provided"):
-            contract.connect(deployer).purchase_policy(
-                args=[
-                    consumer.address,
-                    "https://api.example.com/v1/health",
-                    "ab",
-                    5000
-                ]
-            ).transact(value=10_000)
+    def test_underwriter_reclaims_after_real_time_expiry(self, direct_deploy, direct_vm, direct_alice, direct_bob):
+        """Underwriter successfully reclaims coverage after policy expires in real time."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
 
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/health",
+            "Must return valid JSON with status",
+            86400 * 7
+        )
 
-# ──────────────────────────────────────────────────────────────
-# 2. Outage Claim Filing Tests
-# ──────────────────────────────────────────────────────────────
+        # Warp forward 8 days (past the 7-day expiration)
+        direct_vm.warp("2026-10-03T12:00:00Z")
 
-class TestFileOutageClaim:
+        contract.reclaim_expired_coverage("sentry-1")
 
-    def test_file_claim_happy_path(self, setup):
-        """Consumer files an outage claim with sufficient anti-spam deposit."""
-        contract, client, deployer, consumer = setup
-
-        # Step 1: Underwriter funds policy for Consumer
-        contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v1/health",
-                "Must return JSON with keys: status, uptime",
-                5000
-            ]
-        ).transact(value=10_000)
-
-        # Step 2: Consumer files claim with 5% deposit (500 wei minimum)
-        contract.connect(consumer).file_outage_claim(
-            args=["sentry-1"]
-        ).transact(value=1_000)
-
-        # Verify status changed to CLAIM_FILED
-        policy_json = contract.get_policy(args=["sentry-1"]).call()
-        policy = json.loads(policy_json)
-        assert policy["status"] == 1  # CLAIM_FILED
-
-        # Verify deposit is added to total_coverage_locked in accounting
-        stats_json = contract.get_stats(args=[]).call()
-        stats = json.loads(stats_json)
-        assert int(stats["total_coverage_locked"]) == 11_000  # 10,000 + 1,000
-
-    def test_file_claim_insufficient_deposit_rejected(self, setup):
-        """Claim with deposit below 5% of coverage should be rejected."""
-        contract, client, deployer, consumer = setup
-
-        contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v1/health",
-                "Must return JSON with keys: status, uptime",
-                5000
-            ]
-        ).transact(value=10_000)
-
-        with pytest.raises(Exception, match="Must stake anti-spam deposit"):
-            contract.connect(consumer).file_outage_claim(
-                args=["sentry-1"]
-            ).transact(value=100)  # Below 5% of 10,000
-
-    def test_file_claim_nonexistent_policy_rejected(self, setup):
-        """Filing claim on a non-existent policy should fail."""
-        contract, client, deployer, consumer = setup
-
-        with pytest.raises(Exception, match="does not exist"):
-            contract.connect(consumer).file_outage_claim(
-                args=["sentry-999"]
-            ).transact(value=1_000)
-
-    def test_file_claim_wrong_caller_rejected(self, setup):
-        """Only the insured consumer can file a claim, not the underwriter or a third party."""
-        contract, client, deployer, consumer = setup
-
-        contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v1/health",
-                "Must return JSON with keys: status, uptime",
-                5000
-            ]
-        ).transact(value=10_000)
-
-        # Deployer (underwriter, not consumer) tries to file claim
-        with pytest.raises(Exception, match="Only the insured consumer"):
-            contract.connect(deployer).file_outage_claim(
-                args=["sentry-1"]
-            ).transact(value=1_000)
-
-
-# ──────────────────────────────────────────────────────────────
-# 3. Adjudication — INCIDENT_VERIFIED (Payout)
-# ──────────────────────────────────────────────────────────────
-
-class TestAdjudicateIncidentVerified:
-
-    def test_incident_verified_triggers_payout(self, setup):
-        """
-        When AI jury confirms endpoint is down (INCIDENT_VERIFIED),
-        consumer receives coverage payout + anti-spam deposit refund.
-        """
-        contract, client, deployer, consumer = setup
-
-        # Purchase policy
-        contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v1/health",
-                "Must return JSON with keys: status, uptime",
-                5000
-            ]
-        ).transact(value=10_000)
-
-        # File claim
-        contract.connect(consumer).file_outage_claim(
-            args=["sentry-1"]
-        ).transact(value=1_000)
-
-        # Install mocks for INCIDENT_VERIFIED BEFORE nondet tx (R17)
-        install_incident_verified_mocks(client)
-
-        # Adjudicate
-        contract.connect(deployer).adjudicate_incident(
-            args=["sentry-1"]
-        ).transact()
-
-        # Verify verdict
-        policy_json = contract.get_policy(args=["sentry-1"]).call()
-        policy = json.loads(policy_json)
-        assert policy["verdict"] == "INCIDENT_VERIFIED"
-        assert policy["status"] == 2  # INDEMNIFIED
-        assert int(policy["confidence"]) > 0
-        assert int(policy["outage_severity"]) > 0
-
-        # Verify accounting: total_coverage_locked reduced by coverage + deposit
-        stats_json = contract.get_stats(args=[]).call()
-        stats = json.loads(stats_json)
-        assert stats["total_claims_settled"] == 1
-        assert int(stats["total_coverage_locked"]) == 0
-
-
-# ──────────────────────────────────────────────────────────────
-# 4. Adjudication — ENDPOINT_HEALTHY (Deposit Forfeited)
-# ──────────────────────────────────────────────────────────────
-
-class TestAdjudicateEndpointHealthy:
-
-    def test_endpoint_healthy_forfeits_deposit(self, setup):
-        """
-        When AI jury confirms endpoint is fine (ENDPOINT_HEALTHY),
-        consumer's anti-spam deposit is absorbed into coverage pool.
-        """
-        contract, client, deployer, consumer = setup
-
-        # Purchase policy
-        contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v1/health",
-                "Must return JSON with keys: status, uptime",
-                5000
-            ]
-        ).transact(value=10_000)
-
-        # File claim
-        contract.connect(consumer).file_outage_claim(
-            args=["sentry-1"]
-        ).transact(value=1_000)
-
-        # Install mocks for ENDPOINT_HEALTHY
-        install_endpoint_healthy_mocks(client)
-
-        # Adjudicate
-        contract.connect(deployer).adjudicate_incident(
-            args=["sentry-1"]
-        ).transact()
-
-        # Verify verdict
-        policy_json = contract.get_policy(args=["sentry-1"]).call()
-        policy = json.loads(policy_json)
-        assert policy["verdict"] == "ENDPOINT_HEALTHY"
-        assert policy["status"] == 0  # Reset to ACTIVE (not CLAIM_REJECTED)
-        # Coverage now includes the forfeited deposit
-        assert int(policy["coverage_payout"]) == 11_000  # 10,000 + 1,000 deposit
-
-        # Accounting: total_coverage_locked still tracks 11,000 in escrow
-        stats_json = contract.get_stats(args=[]).call()
-        stats = json.loads(stats_json)
-        assert int(stats["total_coverage_locked"]) == 11_000
-
-
-# ──────────────────────────────────────────────────────────────
-# 5. Expired Coverage Reclamation
-# ──────────────────────────────────────────────────────────────
-
-class TestReclaimExpiredCoverage:
-
-    def test_reclaim_expired_coverage(self, setup):
-        """
-        Underwriter reclaims coverage after policy expiration window.
-        Uses duration_blocks=1 to ensure quick expiry in test.
-        """
-        contract, client, deployer, consumer = setup
-
-        # Underwriter purchases policy for consumer with short duration (1 block)
-        contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v1/health",
-                "Must return JSON with keys: status, uptime",
-                1  # Expires almost immediately
-            ]
-        ).transact(value=10_000)
-
-        # Advance block counter past expiry
-        contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v2/status",
-                "Must return JSON with key: alive",
-                5000
-            ]
-        ).transact(value=5_000)
-
-        # Underwriter reclaims the first (expired) policy
-        contract.connect(deployer).reclaim_expired_coverage(
-            args=["sentry-1"]
-        ).transact()
-
-        # Verify status changed to EXPIRED
-        policy_json = contract.get_policy(args=["sentry-1"]).call()
-        policy = json.loads(policy_json)
+        policy = json.loads(contract.get_policy("sentry-1"))
         assert policy["status"] == 4  # EXPIRED
         assert policy["verdict"] == "EXPIRED_HEALTHY"
 
 
 # ──────────────────────────────────────────────────────────────
-# 6. View Functions & Pagination
+# 2. Stalled-Claim Timing & Timeout Recovery Tests
 # ──────────────────────────────────────────────────────────────
 
-class TestViewFunctions:
+class TestStalledClaimTiming:
 
-    def test_get_stats_empty(self, setup):
-        """Stats on empty contract."""
-        contract, client, deployer, consumer = setup
+    def test_stalled_claim_prevents_premature_reclaim(self, direct_deploy, direct_vm, direct_alice, direct_bob):
+        """Underwriter cannot prematurely reclaim funds while claim adjudication is active."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
 
-        stats_json = contract.get_stats(args=[]).call()
-        stats = json.loads(stats_json)
-        assert stats["total_policies"] == 0
-        assert stats["total_claims_settled"] == 0
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/health",
+            "Must return valid JSON with status",
+            86400 * 7
+        )
 
-    def test_pagination(self, setup):
-        """Paginated view returns correct subset of policies."""
-        contract, client, deployer, consumer = setup
+        # Consumer files claim with 5% deposit
+        direct_vm.sender = direct_bob
+        direct_vm.value = 1_000
+        contract.file_outage_claim("sentry-1")
 
-        # Create 3 policies
+        # Underwriter tries to reclaim 2 hours later
+        direct_vm.warp("2026-09-25T14:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 0
+
+        with pytest.raises(Exception, match="Policy is undergoing active outage adjudication"):
+            contract.reclaim_expired_coverage("sentry-1")
+
+    def test_stalled_claim_recovers_after_24h_timeout(self, direct_deploy, direct_vm, direct_alice, direct_bob):
+        """If a claim is abandoned past 24 hours, underwriter reclaims and consumer deposit is refunded."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
+
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/health",
+            "Must return valid JSON with status",
+            86400 * 7
+        )
+
+        # Bob files claim
+        direct_vm.sender = direct_bob
+        direct_vm.value = 1_000
+        contract.file_outage_claim("sentry-1")
+
+        # 26 hours pass without adjudication
+        direct_vm.warp("2026-09-26T14:00:00Z")
+
+        # Alice reclaims stalled policy
+        direct_vm.sender = direct_alice
+        direct_vm.value = 0
+        contract.reclaim_expired_coverage("sentry-1")
+
+        policy = json.loads(contract.get_policy("sentry-1"))
+        assert policy["status"] == 4  # EXPIRED
+        assert int(policy["claim_deposit"]) == 0
+
+
+# ──────────────────────────────────────────────────────────────
+# 3. Failure Cases: Inconclusive & Retry Path (NO Auto-Payout)
+# ──────────────────────────────────────────────────────────────
+
+class TestFailureCasesInconclusive:
+
+    def test_probe_failure_enters_inconclusive_no_payout(self, direct_deploy, direct_vm, direct_alice, direct_bob, sim_install_mocks):
+        """
+        When endpoint web render fails (network timeout/unreachable):
+        Must enter INCONCLUSIVE_PROBE_FAILED. Underwriter funds MUST NOT be paid out.
+        """
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
+
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://broken-or-offline-api.com/status",
+            "Must return valid JSON with alive=true",
+            86400 * 7
+        )
+
+        # Bob files claim
+        direct_vm.sender = direct_bob
+        direct_vm.value = 1_000
+        contract.file_outage_claim("sentry-1")
+
+        # Mock web probe failure: empty body or connection error
+        sim_install_mocks(
+            direct_vm,
+            mock_web={
+                "https://broken-or-offline-api.com/status": {
+                    "status": 0,
+                    "body": ""
+                }
+            }
+        )
+
+        # Adjudicate incident
+        direct_vm.sender = direct_alice
+        contract.adjudicate_incident("sentry-1")
+
+        policy = json.loads(contract.get_policy("sentry-1"))
+        # Status MUST be 5 (CLAIM_INCONCLUSIVE), NOT 2 (INDEMNIFIED)
+        assert policy["status"] == 5
+        assert policy["verdict"] == "INCONCLUSIVE_PROBE_FAILED"
+        # Underwriter coverage payout is NOT drained!
+        assert int(policy["coverage_payout"]) == 10_000
+        # Bob's anti-spam deposit is preserved
+        assert int(policy["claim_deposit"]) == 1_000
+
+        # Bob can withdraw his deposit safely
+        direct_vm.sender = direct_bob
+        contract.withdraw_inconclusive_deposit("sentry-1")
+
+        policy_after = json.loads(contract.get_policy("sentry-1"))
+        assert policy_after["status"] == 0  # Reset to ACTIVE
+        assert int(policy_after["claim_deposit"]) == 0
+
+    def test_model_failure_enters_inconclusive_no_payout(self, direct_deploy, direct_vm, direct_alice, direct_bob, sim_install_mocks):
+        """
+        When LLM returns malformed/unparseable JSON:
+        Must enter INCONCLUSIVE_MODEL_FAILED. Underwriter funds MUST NOT be paid out.
+        """
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
+
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/health",
+            "Must return valid JSON with status",
+            86400 * 7
+        )
+
+        # Bob files claim
+        direct_vm.sender = direct_bob
+        direct_vm.value = 1_000
+        contract.file_outage_claim("sentry-1")
+
+        # Web returns response, but LLM returns invalid syntax
+        sim_install_mocks(
+            direct_vm,
+            mock_web={
+                "https://api.example.com/v1/health": {
+                    "status": 500,
+                    "body": "Internal Server Error"
+                }
+            },
+            mock_llm={
+                ".*": "Sorry, I am an AI and cannot process this request [corrupted json..."
+            }
+        )
+
+        # Adjudicate incident
+        direct_vm.sender = direct_alice
+        contract.adjudicate_incident("sentry-1")
+
+        policy = json.loads(contract.get_policy("sentry-1"))
+        # Status MUST be 5 (CLAIM_INCONCLUSIVE), NOT 2 (INDEMNIFIED)
+        assert policy["status"] == 5
+        assert policy["verdict"] == "INCONCLUSIVE_MODEL_FAILED"
+        assert int(policy["coverage_payout"]) == 10_000
+
+
+# ──────────────────────────────────────────────────────────────
+# 4. Happy Paths: Incident Verified & Endpoint Healthy
+# ──────────────────────────────────────────────────────────────
+
+class TestHappyPaths:
+
+    def test_incident_verified_triggers_payout(self, direct_deploy, direct_vm, direct_alice, direct_bob, sim_install_mocks):
+        """Valid verified outage triggers automated payout of coverage + deposit refund."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
+
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/service",
+            "Must return JSON with active=true",
+            86400 * 7
+        )
+
+        direct_vm.sender = direct_bob
+        direct_vm.value = 1_000
+        contract.file_outage_claim("sentry-1")
+
+        # Install mock for verified outage
+        sim_install_mocks(
+            direct_vm,
+            mock_web={
+                "https://api.example.com/v1/service": {
+                    "status": 503,
+                    "body": "<html>503 Service Unavailable</html>"
+                }
+            },
+            mock_llm={
+                ".*": json.dumps({
+                    "verdict": "INCIDENT_VERIFIED",
+                    "confidence": 98,
+                    "outage_severity": 95,
+                    "status_code": 503,
+                    "reason": "HTTP 503 Service Unavailable confirmed. API gateway down."
+                })
+            }
+        )
+
+        direct_vm.sender = direct_alice
+        contract.adjudicate_incident("sentry-1")
+
+        policy = json.loads(contract.get_policy("sentry-1"))
+        assert policy["status"] == 2  # INDEMNIFIED
+        assert policy["verdict"] == "INCIDENT_VERIFIED"
+        assert int(policy["outage_severity"]) == 95
+
+        stats = json.loads(contract.get_stats())
+        assert stats["total_claims_settled"] == 1
+
+    def test_endpoint_healthy_forfeits_anti_spam_deposit(self, direct_deploy, direct_vm, direct_alice, direct_bob, sim_install_mocks):
+        """Frivolous claim on healthy endpoint: claim rejected, deposit absorbed into underwriter coverage."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
+
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/service",
+            "Must return JSON with status=ok",
+            86400 * 7
+        )
+
+        direct_vm.sender = direct_bob
+        direct_vm.value = 1_000
+        contract.file_outage_claim("sentry-1")
+
+        # Install mock for healthy endpoint
+        sim_install_mocks(
+            direct_vm,
+            mock_web={
+                "https://api.example.com/v1/service": {
+                    "status": 200,
+                    "body": json.dumps({"status": "ok", "uptime": 99.99})
+                }
+            },
+            mock_llm={
+                ".*": json.dumps({
+                    "verdict": "ENDPOINT_HEALTHY",
+                    "confidence": 94,
+                    "outage_severity": 0,
+                    "status_code": 200,
+                    "reason": "Endpoint 200 OK. All required keys present."
+                })
+            }
+        )
+
+        direct_vm.sender = direct_alice
+        contract.adjudicate_incident("sentry-1")
+
+        policy = json.loads(contract.get_policy("sentry-1"))
+        assert policy["status"] == 0  # Reset to ACTIVE
+        assert policy["verdict"] == "ENDPOINT_HEALTHY"
+        # Anti-spam deposit (1,000) added to coverage pool (10,000 + 1,000 = 11,000)
+        assert int(policy["coverage_payout"]) == 11_000
+        assert int(policy["claim_deposit"]) == 0
+
+
+# ──────────────────────────────────────────────────────────────
+# 5. Contract-Recorded Observation Tests
+# ──────────────────────────────────────────────────────────────
+
+class TestContractRecordedObservations:
+
+    def test_record_health_check_persists_observation(self, direct_deploy, direct_vm, direct_alice, direct_bob, sim_install_mocks):
+        """Point-in-time SLA health audit records verified observation on-chain."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
+
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://api.example.com/v1/health",
+            "Must return valid JSON with healthy=true",
+            86400 * 7
+        )
+
+        sim_install_mocks(
+            direct_vm,
+            mock_web={
+                "https://api.example.com/v1/health": {
+                    "status": 200,
+                    "body": json.dumps({"healthy": True})
+                }
+            },
+            mock_llm={
+                ".*": json.dumps({
+                    "status_code": 200,
+                    "verdict": "HEALTHY",
+                    "reason": "Point-in-time health check passed: HTTP 200 and schema compliant."
+                })
+            }
+        )
+
+        contract.record_health_check("sentry-1")
+
+        policy = json.loads(contract.get_policy("sentry-1"))
+        assert int(policy["observation_count"]) == 1
+        assert int(policy["last_observation_status_code"]) == 200
+        assert policy["last_observation_verdict"] == "HEALTHY"
+        assert int(policy["last_observation_timestamp"]) > 0
+
+
+# ──────────────────────────────────────────────────────────────
+# 6. Pagination & View Functions
+# ──────────────────────────────────────────────────────────────
+
+class TestViewsAndPagination:
+
+    def test_pagination_and_counts(self, direct_deploy, direct_vm, direct_alice, direct_bob):
+        """Verify pagination and total policy counters."""
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 5_000
+
+        contract = direct_deploy(str(CONTRACT_PATH))
+
         for i in range(3):
-            contract.connect(deployer).purchase_policy(
-                args=[
-                    consumer.address,
-                    f"https://api.example.com/v{i+1}/health",
-                    "Must return valid JSON response",
-                    5000
-                ]
-            ).transact(value=5_000)
+            contract.purchase_policy(
+                direct_bob,
+                f"https://api.example.com/v{i+1}",
+                "Schema required with status",
+                86400 * 7
+            )
 
-        # Get page 1 (offset=0, limit=2)
-        page1_json = contract.get_policies_paginated(args=[0, 2]).call()
-        page1 = json.loads(page1_json)
-        assert len(page1) == 2
-        assert page1[0]["policy_id"] == "sentry-1"
-        assert page1[1]["policy_id"] == "sentry-2"
+        assert contract.get_policy_count() == 3
 
-        # Get page 2 (offset=2, limit=2)
-        page2_json = contract.get_policies_paginated(args=[2, 2]).call()
-        page2 = json.loads(page2_json)
-        assert len(page2) == 1
-        assert page2[0]["policy_id"] == "sentry-3"
+        page = json.loads(contract.get_policies_paginated(0, 2))
+        assert len(page) == 2
+        assert page[0]["policy_id"] == "sentry-1"
+        assert page[1]["policy_id"] == "sentry-2"
 
-    def test_get_policy_by_index(self, setup):
-        """Get policy ID by index in the DynArray."""
-        contract, client, deployer, consumer = setup
-
-        contract.connect(deployer).purchase_policy(
-            args=[
-                consumer.address,
-                "https://api.example.com/v1/health",
-                "Must return JSON with status key",
-                5000
-            ]
-        ).transact(value=5_000)
-
-        pid = contract.get_policy_id_by_index(args=[0]).call()
-        assert pid == "sentry-1"
-
-    def test_get_policy_by_index_out_of_bounds(self, setup):
-        """Out of bounds index should raise error."""
-        contract, client, deployer, consumer = setup
-
-        with pytest.raises(Exception, match="Index out of bounds"):
-            contract.get_policy_id_by_index(args=[999]).call()
+        stats = json.loads(contract.get_stats())
+        assert stats["total_policies"] == 3

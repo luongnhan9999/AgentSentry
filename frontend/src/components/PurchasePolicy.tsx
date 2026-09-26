@@ -16,7 +16,7 @@ const TEMPLATES = [
     tag: "High-Frequency Data",
     url: "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT",
     schema: '{"symbol": "ETHUSDT", "price": "<number>"}',
-    duration: "5000",
+    duration: "604800", // 7 days in seconds
     coverage: "1.0",
   },
   {
@@ -24,7 +24,7 @@ const TEMPLATES = [
     tag: "Testing Outage Claim",
     url: "https://httpstat.us/503",
     schema: '{"status": 200, "alive": true}',
-    duration: "5000",
+    duration: "604800", // 7 days in seconds
     coverage: "0.5",
   },
   {
@@ -32,7 +32,7 @@ const TEMPLATES = [
     tag: "Market Health Probe",
     url: "https://api.coingecko.com/api/v3/ping",
     schema: '{"gecko_says": "(V3) To the Moon!"}',
-    duration: "5000",
+    duration: "604800", // 7 days in seconds
     coverage: "2.0",
   },
   {
@@ -40,7 +40,7 @@ const TEMPLATES = [
     tag: "Custom Bot Endpoint",
     url: "https://api.github.com/zen",
     schema: "Non-empty plain text or JSON payload",
-    duration: "2500",
+    duration: "259200", // 3 days in seconds
     coverage: "0.2",
   }
 ];
@@ -222,17 +222,17 @@ const PurchasePolicy: React.FC<PurchasePolicyProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-mono font-bold text-slate-700 mb-1">
-                Duration (Blocks)
+                Duration (Seconds)
               </label>
               <input 
                 type="number" 
                 value={formData.duration}
                 onChange={e => setFormData({...formData, duration: e.target.value})}
                 className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none"
-                min="10"
+                min="60"
                 required 
               />
-              <span className="text-[11px] text-slate-400 font-mono mt-0.5 block">~5000 blocks ≈ 1 week</span>
+              <span className="text-[11px] text-slate-400 font-mono mt-0.5 block">604,800s = 7 days · 86,400s = 1 day</span>
             </div>
             <div>
               <label className="block text-xs font-mono font-bold text-slate-700 mb-1">

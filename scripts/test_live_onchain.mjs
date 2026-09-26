@@ -2,7 +2,7 @@ import { createClient, createAccount } from '../frontend/node_modules/genlayer-j
 import { studionet } from '../frontend/node_modules/genlayer-js/dist/chains/index.js';
 import { TransactionStatus } from '../frontend/node_modules/genlayer-js/dist/types/index.js';
 
-const CONTRACT_ADDRESS = '0x8C63E2ec5Df199024b82E4f289aEF645b93893Ee';
+const CONTRACT_ADDRESS = '0x3339bFB2b7E345F4aB4476Ab68BB542690b627d4';
 const RPC_ENDPOINT = 'https://studio.genlayer.com/api';
 
 // Funded studionet test account
@@ -72,7 +72,7 @@ async function main() {
   const targetUrl = 'https://httpbin.org/status/503';
   const expectedSchema = 'HTTP 200 OK required. JSON payload must return status ok, response_time < 500ms, and zero 5xx server errors.';
   const coverageAmount = 20_000_000_000_000_000n; // 0.02 GEN
-  const durationBlocks = 2000;
+  const durationSeconds = 604800; // 7 days in seconds
 
   console.log(`Target Endpoint:  ${targetUrl}`);
   console.log(`Required Schema:  ${expectedSchema}`);
@@ -86,7 +86,7 @@ async function main() {
       account.address,
       targetUrl,
       expectedSchema,
-      durationBlocks,
+      durationSeconds,
     ],
     value: coverageAmount,
   });

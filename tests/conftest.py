@@ -1,108 +1,60 @@
 """
-conftest.py — gltest fixtures for AgentSentry Intelligent Contract.
-
-Uses bare-dict sim_installMocks (NOT wrapped in a list — R17).
-Provides helper fixtures for deploying and funding test accounts.
+conftest.py — gltest direct_vm fixtures for AgentSentry Intelligent Contract.
+Supports direct GenVM execution, time-warping, and web/LLM mocking.
 """
 import pytest
 import json
-import os
-import sys
+from typing import Dict, Any, Optional
+from pathlib import Path
 
-
-def clear_known_contracts():
-    """
-    GenVM only allows 1 Contract class in registry at a time.
-    Clear before each fresh deploy to avoid AssertionError.
-    """
-    for name, module in list(sys.modules.items()):
-        if hasattr(module, "__name__") and "genlayer" in getattr(module, "__name__", "") and hasattr(module, "__known_contract__"):
-            setattr(module, "__known_contract__", None)
+CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contracts" / "contract.py"
 
 
 @pytest.fixture
-def setup(request):
+def sim_install_mocks(request):
     """
-    Deploy AgentSentry contract and set up test accounts with funds.
-    Returns (contract, client, deployer, consumer) tuple.
+    Fixture supporting web and LLM mocks for direct_vm.
     """
-    from gltest import get_default_runner
+    def _install(
+        vm: Any,
+        mock_web: Optional[Dict[str, Dict[str, Any]]] = None,
+        mock_llm: Optional[Dict[str, str]] = None,
+    ):
+        if hasattr(vm, "mock_web") and hasattr(vm, "mock_llm"):
+            if mock_web:
+                for url, data in mock_web.items():
+                    vm.mock_web(
+                        url,
+                        {
+                            "method": data.get("method", "GET"),
+                            "status": data.get("status", 200),
+                            "body": data.get("body", ""),
+                        },
+                    )
+            if mock_llm:
+                for pattern, resp in mock_llm.items():
+                    vm.mock_llm(pattern, resp)
+            return True
+        return False
 
-    runner = get_default_runner()
-    client = runner.client
-
-    # Fund test accounts
-    deployer = runner.create_account(balance=100_000_000)
-    consumer = runner.create_account(balance=100_000_000)
-
-    clear_known_contracts()
-
-    contract_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "contracts",
-        "contract.py"
-    )
-
-    contract = runner.deploy(
-        contract_path,
-        account=deployer,
-    )
-
-    return contract, client, deployer, consumer
+    return _install
 
 
-def install_incident_verified_mocks(client):
+@pytest.fixture(autouse=True)
+def sync_direct_vm_warp(direct_vm):
     """
-    Install LLM + web mocks that simulate a dead/broken endpoint.
-    The AI jury returns INCIDENT_VERIFIED.
-    Params is a bare dict (R17 — never wrap in a list).
+    Ensure direct_vm.warp synchronizes gl.message_raw['datetime']
+    so contracts prioritizing authoritative gl.message_raw['datetime']
+    receive the exact warped timestamp.
     """
-    client.provider.make_request(
-        method="sim_installMocks",
-        params={
-            "llm_mocks": {
-                ".*": json.dumps({
-                    "verdict": "INCIDENT_VERIFIED",
-                    "confidence": 95,
-                    "outage_severity": 90,
-                    "reason": "Endpoint returned HTTP 503 Service Unavailable. Server is offline with no failover."
-                })
-            },
-            "web_mocks": {
-                ".*": {
-                    "status": 503,
-                    "body": "<html><body>503 Service Unavailable</body></html>"
-                }
-            }
-        }
-    )
+    orig_warp = direct_vm.warp
 
+    def _wrapped_warp(timestamp: str) -> None:
+        orig_warp(timestamp)
+        import sys
+        if 'genlayer.gl' in sys.modules:
+            gl = sys.modules['genlayer.gl']
+            if hasattr(gl, 'message_raw') and isinstance(gl.message_raw, dict):
+                gl.message_raw['datetime'] = timestamp
 
-def install_endpoint_healthy_mocks(client):
-    """
-    Install LLM + web mocks that simulate a healthy endpoint.
-    The AI jury returns ENDPOINT_HEALTHY.
-    """
-    client.provider.make_request(
-        method="sim_installMocks",
-        params={
-            "llm_mocks": {
-                ".*": json.dumps({
-                    "verdict": "ENDPOINT_HEALTHY",
-                    "confidence": 92,
-                    "outage_severity": 5,
-                    "reason": "Endpoint responds with valid JSON, all required schema keys present. Response latency within SLA parameters."
-                })
-            },
-            "web_mocks": {
-                ".*": {
-                    "status": 200,
-                    "body": json.dumps({
-                        "status": "ok",
-                        "data": {"uptime": 99.99, "response_time_ms": 42},
-                        "timestamp": "2026-09-24T00:00:00Z"
-                    })
-                }
-            }
-        }
-    )
+    direct_vm.warp = _wrapped_warp
