@@ -1,7 +1,7 @@
 import { createClient } from 'genlayer-js';
 import { studionet } from 'genlayer-js/chains';
 
-export const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || "0x3339bFB2b7E345F4aB4476Ab68BB542690b627d4";
+export const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || "0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d";
 
 export const getGenLayerClient = (userAccount?: string) => {
   return createClient({
@@ -21,8 +21,7 @@ export const ensureStudionetNetwork = async () => {
     if (
       currentChainId && 
       (currentChainId.toLowerCase() === '0xf22f' || 
-       parseInt(currentChainId, 16) === 61999 ||
-       currentChainId.toLowerCase() === '0xf1ef')
+       parseInt(currentChainId, 16) === 61999)
     ) {
       return; // Already on GenLayer Studio network!
     }

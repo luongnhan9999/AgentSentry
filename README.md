@@ -2,7 +2,7 @@
 
 > **Hackathon Track:** Agentic Economy Infrastructure / Subjective Consensus / P2P Insurance  
 > **Network:** GenLayer studionet (Chain ID: `61999` / `0xF22F`)  
-> **Deployed Contract:** [`0x3339bFB2b7E345F4aB4476Ab68BB542690b627d4`](https://explorer-studio.genlayer.com/address/0x3339bFB2b7E345F4aB4476Ab68BB542690b627d4)  
+> **Deployed Contract:** [`0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d`](https://explorer-studio.genlayer.com/address/0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d)  
 > **Live App:** [https://agentsentry-eta.vercel.app](https://agentsentry-eta.vercel.app)  
 > **One-liner:** Autonomous API SLA & uptime insurance protocol for AI agents, adjudicated on-chain via GenLayer consensus.
 
@@ -116,11 +116,11 @@ tests/test_agentsentry.py::TestViewsAndPagination::test_pagination_and_counts PA
 - **Network:** GenLayer Studionet
 - **Chain ID:** `61999` (`0xF22F`)
 - **RPC Endpoint:** `https://studio.genlayer.com/api`
-- **Contract Address:** [`0x3339bFB2b7E345F4aB4476Ab68BB542690b627d4`](https://explorer-studio.genlayer.com/address/0x3339bFB2b7E345F4aB4476Ab68BB542690b627d4)
-- **Deployment Transaction:** `0xb8b423842cf755bfcce7d9f6f55d9515b76d32211dd2fd771a090f43a20938ac` (Status: ACCEPTED, 5/5 Validators Agreed)
+- **Contract Address:** [`0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d`](https://explorer-studio.genlayer.com/address/0xc70C05991090d036Bd09FfA7A59Bc9A3660c335d)
+- **Deployment Transaction:** `0xd7e9a7f23240d4b750540788dadf290feb4e664de6b3a09c47425a64481c47a4` (Status: ACCEPTED, 5/5 Validators Agreed)
 - **Live Tested Policies:**
-  - `sentry-1`: Live `httpbin.org/status/503` endpoint probe triggered on-chain. Correctly entered `CLAIM_INCONCLUSIVE` (`INCONCLUSIVE_PROBE_FAILED`) without draining underwriter collateral.
-  - `sentry-2`: Live ACTIVE policy funded with 0.05 GEN coverage for user testing (`0x52C5E913Fc54d00cbA5Df3312268bf66035661F8`).
+  - `sentry-1`: Live ACTIVE policy funded with 0.05 GEN coverage for user testing (`0x52C5E913Fc54d00cbA5Df3312268bf66035661F8`).
+  - Unit Tests: 12/12 passing tests including anti-front-running inconclusive coverage locks and 24h stalled claim recovery.
 
 ---
 

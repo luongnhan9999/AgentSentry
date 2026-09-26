@@ -263,6 +263,61 @@ class TestFailureCasesInconclusive:
         assert policy["verdict"] == "INCONCLUSIVE_MODEL_FAILED"
         assert int(policy["coverage_payout"]) == 10_000
 
+    def test_inconclusive_claim_reclaim_lifecycle(self, direct_deploy, direct_vm, direct_alice, direct_bob, sim_install_mocks):
+        """
+        Anti-Front-running test:
+        When a claim is INCONCLUSIVE, an underwriter CANNOT immediately front-run
+        and reclaim coverage before the policy duration has elapsed.
+        Once the policy duration has actually elapsed, underwriter can reclaim.
+        """
+        direct_vm.warp("2026-09-25T12:00:00Z")
+        direct_vm.sender = direct_alice
+        direct_vm.value = 10_000
+
+        contract = direct_deploy(str(CONTRACT_PATH))
+        contract.purchase_policy(
+            direct_bob,
+            "https://intermittent-api.com/health",
+            "Must return valid status",
+            86400 * 7  # 7 days
+        )
+
+        # Bob files claim on Day 1
+        direct_vm.sender = direct_bob
+        direct_vm.value = 1_000
+        contract.file_outage_claim("sentry-1")
+
+        # Network error causes inconclusive verdict
+        sim_install_mocks(
+            direct_vm,
+            mock_web={
+                "https://intermittent-api.com/health": {
+                    "status": 0,
+                    "body": ""
+                }
+            }
+        )
+        direct_vm.sender = direct_alice
+        contract.adjudicate_incident("sentry-1")
+
+        policy = json.loads(contract.get_policy("sentry-1"))
+        assert policy["status"] == 5  # CLAIM_INCONCLUSIVE
+
+        # Underwriter tries to reclaim on Day 1 (BEFORE 7 days elapse) -> MUST FAIL
+        with pytest.raises(Exception) as exc_info:
+            contract.reclaim_expired_coverage("sentry-1")
+        assert "not yet elapsed" in str(exc_info.value).lower()
+
+        # Warp time past the 7 days expiration (e.g. 8 days later)
+        direct_vm.warp("2026-10-03T13:00:00Z")
+        contract.reclaim_expired_coverage("sentry-1")
+
+        policy_expired = json.loads(contract.get_policy("sentry-1"))
+        assert policy_expired["status"] == 4  # EXPIRED
+        assert policy_expired["verdict"] == "EXPIRED_HEALTHY"
+        assert int(policy_expired["coverage_payout"]) == 0
+        assert int(policy_expired["claim_deposit"]) == 0
+
 
 # ──────────────────────────────────────────────────────────────
 # 4. Happy Paths: Incident Verified & Endpoint Healthy

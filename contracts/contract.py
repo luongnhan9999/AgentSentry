@@ -18,12 +18,20 @@ def _addr_str(addr: Address) -> str:
         return addr.as_hex
     except Exception:
         return str(addr)
-
-
 def _to_address(addr: Any) -> Address:
     """Safely cast Address, bytes, or hex string to Address."""
     if isinstance(addr, Address):
         return addr
+    if hasattr(addr, "as_bytes"):
+        return Address(addr.as_bytes)
+    if isinstance(addr, (bytes, bytearray)):
+        return Address(bytes(addr))
+    if isinstance(addr, str):
+        clean = addr[2:] if addr.startswith(("0x", "0X")) else addr
+        try:
+            return Address(bytes.fromhex(clean))
+        except Exception:
+            pass
     return Address(addr)
 
 
@@ -537,6 +545,8 @@ Output JSON: {{"status_code": 200, "verdict": "HEALTHY", "reason": "Endpoint com
                 gl.get_contract_at(p.insured_consumer).emit_transfer(value=u256(dep))
 
         elif p.status == u8(5):  # CLAIM_INCONCLUSIVE
+            if now < p.expires_at:
+                raise UserError("Cannot reclaim: Insurance policy duration has not yet elapsed.")
             # Inconclusive claim: refund consumer deposit first if unwithdrawn
             dep = p.claim_deposit
             p.claim_deposit = bigint(0)
