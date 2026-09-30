@@ -1,7 +1,7 @@
 import { createClient } from 'genlayer-js';
 import { studionet } from 'genlayer-js/chains';
 
-export const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || "0x5D8Eb68f944D291F4Ccf6C13f96c0871ceaD906a";
+export const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || "0x54E9BCa257Ef76bc75Bfe8c48bDD5051F81E1999";
 
 export const getGenLayerClient = (userAccount?: string) => {
   return createClient({

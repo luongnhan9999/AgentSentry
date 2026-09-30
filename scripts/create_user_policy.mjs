@@ -2,7 +2,7 @@ import { createClient, createAccount } from '../frontend/node_modules/genlayer-j
 import { studionet } from '../frontend/node_modules/genlayer-js/dist/chains/index.js';
 import { TransactionStatus } from '../frontend/node_modules/genlayer-js/dist/types/index.js';
 
-const CONTRACT_ADDRESS = '0x5D8Eb68f944D291F4Ccf6C13f96c0871ceaD906a';
+const CONTRACT_ADDRESS = '0x54E9BCa257Ef76bc75Bfe8c48bDD5051F81E1999';
 const RPC_ENDPOINT = 'https://studio.genlayer.com/api';
 
 // Funded underwriter account
