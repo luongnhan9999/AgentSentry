@@ -20,7 +20,7 @@ const StatsBar: React.FC<StatsBarProps> = ({ stats, activeCount, breachCount, to
       <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow transition-shadow">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500">
-            Monitored Policies
+            Active / Total Policies
           </span>
           <div className="p-2 bg-sky-50 text-sky-600 rounded-xl">
             <Shield className="w-5 h-5" />
@@ -72,7 +72,7 @@ const StatsBar: React.FC<StatsBarProps> = ({ stats, activeCount, breachCount, to
       <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow transition-shadow">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500">
-            Contract Health Audits
+            On-Chain Health Checks
           </span>
           <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
             <Activity className="w-5 h-5" />
@@ -80,7 +80,7 @@ const StatsBar: React.FC<StatsBarProps> = ({ stats, activeCount, breachCount, to
         </div>
         <div className="flex items-baseline gap-2">
           <span className="text-3xl font-mono font-extrabold text-purple-600">{totalObservations}</span>
-          <span className="text-xs font-mono text-slate-500">audits on-chain</span>
+          <span className="text-xs font-mono text-slate-500">observations on-chain</span>
         </div>
         <p className="mt-2 text-[11px] text-slate-400 font-mono">100% Contract-Recorded Observations</p>
       </div>

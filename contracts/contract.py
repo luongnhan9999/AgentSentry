@@ -75,12 +75,14 @@ class Contract(gl.Contract):
     total_coverage_locked: bigint
     total_claims_settled: u32
     policy_counter: u64
+    total_observations: u32
 
     def __init__(self):
         # GenVM auto-initializes TreeMap and DynArray. Do NOT reassign in __init__.
         self.total_coverage_locked = bigint(0)
         self.total_claims_settled = u32(0)
         self.policy_counter = u64(0)
+        self.total_observations = u32(0)
 
     def _get_current_timestamp(self) -> bigint:
         """
@@ -379,6 +381,7 @@ Respond ONLY with valid JSON without markdown:
         p.last_observation_verdict = verdict
         p.last_observation_reason = reason
         p.observation_count = p.observation_count + u32(1)
+        self.total_observations = self.total_observations + u32(1)
 
         p.verdict = verdict
         p.reason = reason
@@ -517,6 +520,7 @@ Output JSON: {{"status_code": 200, "verdict": "HEALTHY", "reason": "Endpoint com
         p.last_observation_verdict = obs_res["verdict"]
         p.last_observation_reason = obs_res["reason"]
         p.observation_count = p.observation_count + u32(1)
+        self.total_observations = self.total_observations + u32(1)
 
     @gl.public.write
     def reclaim_expired_coverage(self, policy_id: str) -> None:
@@ -661,5 +665,6 @@ Output JSON: {{"status_code": 200, "verdict": "HEALTHY", "reason": "Endpoint com
             "total_policies": len(self.policy_ids),
             "total_coverage_locked": str(self.total_coverage_locked),
             "total_claims_settled": int(self.total_claims_settled),
+            "total_observations": int(self.total_observations),
         }
         return json.dumps(data)

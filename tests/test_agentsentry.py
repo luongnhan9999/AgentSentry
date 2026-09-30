@@ -468,6 +468,9 @@ class TestContractRecordedObservations:
         assert policy["last_observation_verdict"] == "HEALTHY"
         assert int(policy["last_observation_timestamp"]) > 0
 
+        stats = json.loads(contract.get_stats())
+        assert int(stats["total_observations"]) == 1
+
 
 # ──────────────────────────────────────────────────────────────
 # 6. Pagination & View Functions
