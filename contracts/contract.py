@@ -1,15 +1,10 @@
+# v0.2.24
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 from dataclasses import dataclass
-from typing import Any
 import json
 
-try:
-    UserError = UserError
-except NameError:
-    class UserError(Exception):
-        """Contract user-facing error. Defined locally for gltest compatibility."""
-        pass
+UserError = getattr(getattr(gl, 'vm', None), 'UserError', Exception)
 
 
 def _addr_str(addr: Address) -> str:
@@ -18,7 +13,9 @@ def _addr_str(addr: Address) -> str:
         return addr.as_hex
     except Exception:
         return str(addr)
-def _to_address(addr: Any) -> Address:
+
+
+def _to_address(addr) -> Address:
     """Safely cast Address, bytes, or hex string to Address."""
     if isinstance(addr, Address):
         return addr
