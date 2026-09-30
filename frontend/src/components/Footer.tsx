@@ -33,7 +33,7 @@ const Footer: React.FC = () => {
               Network Specs
             </h4>
             <ul className="space-y-2 text-xs font-mono text-slate-600">
-              <li>Chain ID: <span className="text-slate-900 font-bold">61999 (0xF1EF)</span></li>
+              <li>Chain ID: <span className="text-slate-900 font-bold">61999 (0xF22F)</span></li>
               <li>Network: <span className="text-slate-900 font-bold">studionet</span></li>
               <li>Consensus: <span className="text-slate-900 font-bold">Optimistic Democracy</span></li>
               <li>VM Runtime: <span className="text-slate-900 font-bold">GenVM (Python 3.12)</span></li>

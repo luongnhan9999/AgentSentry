@@ -181,13 +181,64 @@ const DiagnosticInspectorModal: React.FC<DiagnosticInspectorModalProps> = ({ pol
                   <span className="font-semibold text-slate-800 truncate block">{truncateAddress(policy.underwriter_pool)}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[10px] block">Created Block</span>
-                  <span className="font-semibold text-slate-800">#{policy.created_at_block}</span>
+                  <span className="text-slate-400 text-[10px] block">Created Timestamp</span>
+                  <span className="font-semibold text-slate-800">
+                    {Number(policy.created_at) > 1000000000 
+                      ? new Date(Number(policy.created_at) * 1000).toLocaleDateString()
+                      : `#${policy.created_at_block}`}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[10px] block">Expires Block</span>
-                  <span className="font-semibold text-slate-800">#{policy.expires_at_block}</span>
+                  <span className="text-slate-400 text-[10px] block">Expires Timestamp</span>
+                  <span className="font-semibold text-slate-800">
+                    {Number(policy.expires_at) > 1000000000 
+                      ? new Date(Number(policy.expires_at) * 1000).toLocaleDateString()
+                      : `#${policy.expires_at_block}`}
+                  </span>
                 </div>
+              </div>
+
+              {/* Contract-Recorded Observation Telemetry */}
+              <div className="p-4 bg-slate-900 text-slate-200 rounded-xl border border-slate-800 font-mono text-xs space-y-2">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <div className="flex items-center gap-2 text-sky-400 font-bold">
+                    <Activity className="w-4 h-4" />
+                    <span>Contract-Recorded SLA Observations</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800 text-[10px] font-bold">
+                    {Number(policy.observation_count) || 0} AUDITS ON-CHAIN
+                  </span>
+                </div>
+                {Number(policy.last_observation_timestamp) > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 text-[11px]">
+                    <div>
+                      <span className="text-slate-400 text-[10px] block">LATEST STATUS</span>
+                      <span className="font-bold text-white">HTTP {policy.last_observation_status_code}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px] block">VERDICT</span>
+                      <span className="font-bold text-emerald-400">{policy.last_observation_verdict}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px] block">PROBE LATENCY</span>
+                      <span className="font-bold text-sky-300">{policy.last_observation_latency_ms} ms</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px] block">TIMESTAMP</span>
+                      <span className="font-bold text-slate-300">
+                        {new Date(Number(policy.last_observation_timestamp) * 1000).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="col-span-2 md:col-span-4 bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-300">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold mb-0.5">Auditor Diagnostic Notes:</span>
+                      {policy.last_observation_reason}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 pt-2 italic">
+                    0 observations recorded on this policy yet. Observations are recorded on-chain when incident claims are adjudicated or when "Health Audit" is called.
+                  </p>
+                )}
               </div>
             </>
           )}

@@ -284,6 +284,23 @@ function App() {
     return onchainPolicies.filter((p) => p.status === 2 || p.verdict === 'INCIDENT_VERIFIED').length;
   }, [onchainPolicies]);
 
+  const totalRecordedObservations = useMemo(() => {
+    return onchainPolicies.reduce((sum, p) => sum + (Number(p.observation_count) || 0), 0);
+  }, [onchainPolicies]);
+
+  const latestObservation = useMemo(() => {
+    const observed = onchainPolicies
+      .filter((p) => Number(p.last_observation_timestamp) > 0)
+      .sort((a, b) => Number(b.last_observation_timestamp) - Number(a.last_observation_timestamp));
+    if (observed.length === 0) return undefined;
+    const latest = observed[0];
+    return {
+      statusCode: latest.last_observation_status_code,
+      verdict: latest.last_observation_verdict,
+      timestamp: latest.last_observation_timestamp,
+    };
+  }, [onchainPolicies]);
+
   const handleOpenSandbox = () => {
     setShowSandbox(true);
   };
@@ -305,8 +322,12 @@ function App() {
       />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
-        {/* Live Hardware Telemetry Oscilloscope */}
-        <TelemetryHeartbeat activeCount={activeCount} />
+        {/* Point-in-Time SLA Telemetry */}
+        <TelemetryHeartbeat 
+          activeCount={activeCount} 
+          totalObservations={totalRecordedObservations}
+          latestObservation={latestObservation}
+        />
 
         {/* Hero Section */}
         <HeroSection 
@@ -324,6 +345,7 @@ function App() {
           stats={onchainStats} 
           activeCount={activeCount}
           breachCount={breachCount}
+          totalObservations={totalRecordedObservations}
         />
 
         {/* If in AI Jury Chamber, render JuryQuorumVisualizer */}

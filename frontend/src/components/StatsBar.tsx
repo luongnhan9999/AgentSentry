@@ -6,17 +6,13 @@ interface StatsBarProps {
   stats: any;
   activeCount: number;
   breachCount: number;
+  totalObservations?: number;
 }
 
-const StatsBar: React.FC<StatsBarProps> = ({ stats, activeCount, breachCount }) => {
+const StatsBar: React.FC<StatsBarProps> = ({ stats, activeCount, breachCount, totalObservations = 0 }) => {
   const totalPolicies = stats?.total_policies || 0;
   const totalCoverage = stats?.total_coverage_locked || "0";
   const totalClaims = stats?.total_claims_settled || 0;
-
-  // Calculate simulated protocol health ratio
-  const healthRate = totalPolicies > 0 
-    ? Math.max(85, Math.round(((totalPolicies - breachCount) / totalPolicies) * 100))
-    : 99.8;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
@@ -72,23 +68,21 @@ const StatsBar: React.FC<StatsBarProps> = ({ stats, activeCount, breachCount }) 
         <p className="mt-2 text-[11px] text-slate-400 font-mono">Zero-Oracle AI Jury Consensus</p>
       </div>
 
-      {/* Protocol Health / Uptime Index */}
+      {/* Contract-Recorded Health Audits */}
       <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow transition-shadow">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500">
-            Network SLA Health
+            Contract Health Audits
           </span>
           <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
             <Activity className="w-5 h-5" />
           </div>
         </div>
         <div className="flex items-baseline gap-2">
-          <span className="text-3xl font-mono font-extrabold text-slate-900">{healthRate}%</span>
-          <span className="text-xs font-mono text-emerald-600 font-semibold">Compliance</span>
+          <span className="text-3xl font-mono font-extrabold text-purple-600">{totalObservations}</span>
+          <span className="text-xs font-mono text-slate-500">audits on-chain</span>
         </div>
-        <div className="mt-3 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-          <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${healthRate}%` }}></div>
-        </div>
+        <p className="mt-2 text-[11px] text-slate-400 font-mono">100% Contract-Recorded Observations</p>
       </div>
     </div>
   );

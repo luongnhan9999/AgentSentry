@@ -2,7 +2,6 @@ import React from 'react';
 import { getStatusLabel, getStatusColor, formatGen, truncateAddress } from '../utils/helpers';
 import { ExternalLink, Search, ShieldAlert, CheckCircle, Clock, Activity, AlertTriangle, ShieldCheck, Zap, ArrowUpRight, Wifi, Shield, RefreshCw } from 'lucide-react';
 import { getGenLayerClient, contractAddress, ensureStudionetNetwork } from '../config/genlayer';
-import UptimeHeatmap from './UptimeHeatmap';
 
 interface PolicyCardProps {
   policy: any;
@@ -150,15 +149,34 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
           </div>
         </div>
 
-        {/* Contract-Recorded Observation Summary */}
-        {Number(policy.last_observation_timestamp) > 0 && (
-          <div className="mb-2 p-2 bg-slate-900 text-slate-300 rounded-lg text-[10px] font-mono flex items-center justify-between">
-            <span className="text-slate-400">LAST OBSERVATION:</span>
-            <span className="text-emerald-400 font-bold">
-              HTTP {policy.last_observation_status_code || 200} • {policy.last_observation_verdict}
+        {/* Contract-Recorded Point-in-Time Observations */}
+        <div className="mb-3 p-2.5 bg-slate-900 text-slate-200 rounded-xl text-xs font-mono border border-slate-800">
+          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1 border-b border-slate-800 pb-1">
+            <span className="flex items-center gap-1 font-bold">
+              <Activity className="w-3 h-3 text-sky-400" />
+              <span>POINT-IN-TIME AUDITS:</span>
             </span>
+            <span className="text-sky-300 font-bold">{Number(policy.observation_count) || 0} recorded</span>
           </div>
-        )}
+          {Number(policy.last_observation_timestamp) > 0 ? (
+            <div className="space-y-1 text-[11px] pt-0.5">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[10px]">Latest Probe:</span>
+                <span className={`font-bold ${policy.last_observation_verdict === 'HEALTHY' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  HTTP {policy.last_observation_status_code} • {policy.last_observation_verdict}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-slate-400">
+                <span>Latency: {policy.last_observation_latency_ms}ms</span>
+                <span>{new Date(Number(policy.last_observation_timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[10px] text-slate-400 pt-0.5 italic">
+              0 audits recorded on-chain. Click "Health Audit" to trigger live GenLayer web probe.
+            </p>
+          )}
+        </div>
 
         {/* Real-time Verdict Diagnosis */}
         {policy.status !== 0 && (
@@ -192,6 +210,27 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
           >
             <Search className="w-3.5 h-3.5 mr-1 text-slate-500" /> Dossier
           </button>
+
+          {/* Health Audit (Trigger Real On-Chain Web Probe) */}
+          {policy.status === 0 && (
+            <button 
+              onClick={() => handleAction('audit_health')} 
+              disabled={!!loadingAction} 
+              className="flex-1 flex items-center justify-center py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-mono font-bold transition-all shadow-sm disabled:opacity-50"
+              title="Record an on-chain point-in-time SLA health audit via GenLayer web probe"
+            >
+              {loadingAction === 'audit_health' ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-emerald-800 border-t-transparent rounded-full animate-spin mr-1.5"></div>
+                  Auditing...
+                </>
+              ) : (
+                <>
+                  <Activity className="w-3.5 h-3.5 mr-1 text-emerald-700" /> Health Audit
+                </>
+              )}
+            </button>
+          )}
           
           {/* File Claim (Consumer Portal or Active Policy) */}
           {(policy.status === 0 || policy.status === 5) && (

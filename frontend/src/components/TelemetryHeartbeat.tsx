@@ -29,7 +29,7 @@ const TelemetryHeartbeat: React.FC<TelemetryHeartbeatProps> = ({
         <span className="text-slate-600">|</span>
         <div className="flex items-center gap-1.5 text-slate-400">
           <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-          <span>INSURED ENDPOINTS:</span>
+          <span>ACTIVE POLICIES:</span>
           <span className="text-sky-400 font-bold">{activeCount}</span>
         </div>
       </div>
@@ -38,8 +38,8 @@ const TelemetryHeartbeat: React.FC<TelemetryHeartbeatProps> = ({
       <div className="flex items-center gap-4 text-[11px] text-slate-400">
         <div className="flex items-center gap-1.5">
           <Activity className="w-3 h-3 text-emerald-400" />
-          <span>ON-CHAIN AUDITS: </span>
-          <span className="text-white font-bold">{totalObservations > 0 ? totalObservations : activeCount}</span>
+          <span>CONTRACT-RECORDED AUDITS: </span>
+          <span className="text-white font-bold">{totalObservations}</span>
         </div>
         <span className="text-slate-700 hidden sm:inline">•</span>
         <div className="flex items-center gap-1.5">

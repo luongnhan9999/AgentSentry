@@ -20,9 +20,9 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onNewPolicy, onOpenSandbox, o
       <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-800/80 text-[11px] font-mono text-slate-400">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-          <span className="text-white font-bold tracking-wider">GENLAYER SYNTHETIC JURISDICTION</span>
+          <span className="text-white font-bold tracking-wider">GENLAYER DECENTRALIZED JURISDICTION</span>
           <span className="text-slate-600">//</span>
-          <span className="text-sky-400">STUDIONET-01 [0xF1EF]</span>
+          <span className="text-sky-400">STUDIONET [0xF22F]</span>
         </div>
 
         <div className="flex items-center gap-4 text-slate-400">
